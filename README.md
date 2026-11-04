@@ -2,7 +2,7 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-02 — model danych i migracje projektowe zweryfikowane na PostgreSQL 16. Backend pozostaje szkieletem; implementacja API jest w toku, a dowody wykonania będą uzupełniane wraz z kolejnymi zadaniami.
+> **Status:** ZR-03 — kontrakt DTO, API i formatu pakietu zamknięty i zweryfikowany statycznie. Endpointy nie są jeszcze zaimplementowane; backend pozostaje szkieletem, a dowody działania będą uzupełniane wraz z kolejnymi zadaniami.
 
 ## Spis treści
 
@@ -10,6 +10,7 @@ Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomo�
 - [Zakres MVP](#zakres-mvp)
 - [Poza zakresem](#poza-zakresem)
 - [Model dostępu i granice bezpieczeństwa](#model-dostępu-i-granice-bezpieczeństwa)
+- [Kontrakt API](#kontrakt-api)
 - [Wymagania R01–R10 i planowane dowody](#wymagania-r01r10-i-planowane-dowody)
 - [Architektura docelowa](#architektura-docelowa)
 - [Uruchomienie w Dockerze](#uruchomienie-w-dockerze)
@@ -111,25 +112,60 @@ Pozostałe ścieżki `/api/**` wymagają uwierzytelnienia. Logowanie jest public
 
 ### Limity i ochrona przed nadużyciami
 
-- Logowanie: 5 prób na minutę na parę IP + nazwa użytkownika.
-- Deszyfrowanie: 30 operacji na minutę na użytkownika.
-- Szyfrowanie: 60 operacji na minutę na użytkownika.
+- Logowanie: 5 nieudanych prób na minutę na parę IP + znormalizowany login.
+- Deszyfrowanie: 30 operacji na minutę na użytkownika (oba endpointy łącznie).
+- Szyfrowanie: 60 operacji na minutę na użytkownika (oba endpointy łącznie).
 - Maksymalna długość wiadomości: 10 000 punktów kodowych (maks. 40 000 bajtów UTF-8).
 - Maksymalny ciphertext: 40 000 bajtów; nonce: 12 bajtów; tag: 16 bajtów.
 - Maksymalny rozmiar pakietu: 56 000 znaków.
-- Maksymalny rozmiar żądania: 64 KB.
+- Maksymalny rozmiar żądania: 65 536 B (64 KiB).
 - Przekroczenie limitu zwraca `429` z nagłówkiem `Retry-After`.
+
+## Kontrakt API
+
+Kanoniczny kontrakt HTTP, DTO, błędów, paginacji i formatu pakietu znajduje się w [`docs/API.md`](docs/API.md). Ten dokument rozstrzyga wszystkie rozbieżności.
+
+| Metoda | Ścieżka | Sukces | Opis |
+|---|---|---|---|
+| `GET` | `/api/auth/csrf` | `200` | token CSRF |
+| `POST` | `/api/auth/login` | `200` | logowanie |
+| `POST` | `/api/auth/logout` | `204` | wylogowanie |
+| `GET` | `/api/auth/me` | `200` | bieżący użytkownik |
+| `POST` | `/api/crypto/encrypt` | `200` | szyfrowanie bez zapisu |
+| `POST` | `/api/crypto/decrypt` | `200` | deszyfrowanie wklejonego pakietu |
+| `POST` | `/api/messages` | `201` | szyfrowanie z zapisem |
+| `GET` | `/api/messages` | `200` | lista z paginacją kursorową |
+| `GET` | `/api/messages/{id}` | `200` | szczegóły i pakiet |
+| `POST` | `/api/messages/{id}/decrypt` | `200` | deszyfrowanie zapisanej |
+| `DELETE` | `/api/messages/{id}` | `204` | usunięcie |
+| `GET` | `/actuator/health` | `200`/`503` | healthcheck |
+
+Najważniejsze reguły:
+
+- JSON UTF-8; błędy w formacie `application/problem+json` z RFC 9457 i stabilnym polem `code`.
+- Wszystkie odpowiedzi `/api/**` mają `Cache-Control: no-store`; każda ma `X-Request-Id`.
+- Właściciel pochodzi wyłącznie z sesji. Żaden DTO żądania nie ma pola właściciela, a nieznane pola JSON są odrzucane.
+- Cudza i nieistniejąca wiadomość po `id` dają identyczne `404`. Cudzy pakiet wklejony bez `id` daje `422`.
+- Paginacja jest kursorowa: `limit` 1–50 (domyślnie 10), `nextCursor` i `hasMore`; brak `total`.
+- Pakiet: `v1.<key_id>.<base64url(nonce)>.<base64url(ciphertext)>.<base64url(tag)>`; AAD `v1:<ownerId>:<keyId>`.
+- Limity: 10 000 punktów kodowych / 40 000 B UTF-8 plaintextu, 56 000 znaków pakietu, 65 536 B żądania.
+
+Walidacja dokumentacji:
+
+```bash
+node scripts/validate-api-contract.mjs
+```
 
 ## Wymagania R01–R10 i planowane dowody
 
 | ID | Wymaganie | Planowany dowód |
 |---|---|---|
 | R01 | Frontend JavaScript z React/Angular | React + Vite + TypeScript (kompilowany do JavaScript); testy komponentów Vitest/RTL; E2E Playwright pełnego przepływu |
-| R02 | Logowanie i walidacja danych | Testy integracyjne logowania, błędnych danych, sesji i CSRF; scenariusz E2E |
-| R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Testy jednostkowe `CryptoService` (roundtrip, tampering, zły klucz, zły właściciel) oraz testy API |
-| R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`/`V2`, ograniczenia CHECK, FK i indeks; walidacja na PostgreSQL 16 (`./scripts/validate-schema.sh`); docelowo Testcontainers |
+| R02 | Logowanie i walidacja danych | Kontrakt logowania, sesji i CSRF w `docs/API.md`; walidacja przykładów i kodów błędów (`node scripts/validate-api-contract.mjs`); testy integracyjne i E2E w kolejnych zadaniach |
+| R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Kontrakt pakietu, AAD i wektor AES-256-GCM w `docs/API.md`; walidator odszyfrowuje i ponownie szyfruje wektor; testy jednostkowe `CryptoService` w kolejnym zadaniu |
+| R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`/`V2`, ograniczenia CHECK, FK i indeks; walidacja na PostgreSQL 16 (`./scripts/validate-schema.sh`); kontrakt CRUD i paginacji w `docs/API.md`; docelowo Testcontainers |
 | R05 | Uruchomienie lokalne w Dockerze | Czysty start `docker compose down -v` → `docker compose up -d --build`; healthchecki; instrukcja w README |
-| R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Testy negatywne: walidacja, CSRF `403`, dwa konta i `404`, payloady SQLi/XSS, limit `429` |
+| R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Macierz statusów, katalog kodów, `404` dla obcych zasobów i limity w `docs/API.md`; walidacja spójności dokumentacji; testy negatywne w kolejnych zadaniach |
 | R07 | Responsywność | Zrzuty ekranu Playwright przy 360, 768 i 1280 px |
 | R08 | Dostępność | Skan axe; checklista klawiatury, fokusu, etykiet i komunikatów dla czytnika ekranu |
 | R09 | Wydajność | Paginacja, indeks `(owner_id, created_at desc, id desc)`, limity; pomiary `hey` i `EXPLAIN ANALYZE` w `docs/PERFORMANCE.md` |
@@ -202,11 +238,18 @@ Konta są tworzone tylko przy `APP_DEMO_USERS=true` (profil lokalny/demo):
 |---|---|---|
 | Backend — jednostkowe i integracyjne | JUnit 5, MockMvc, Testcontainers | `cd backend && ./mvnw verify` |
 | Schemat bazy i migracje | PostgreSQL 16, psql, Docker | `./scripts/validate-schema.sh` |
+| Kontrakt API i dokumentacja | Node.js, `node:crypto` | `node scripts/validate-api-contract.mjs` |
 | Frontend — jednostkowe i komponentowe | Vitest, React Testing Library, MSW | `cd frontend && npm run test -- --run` |
 | E2E i dostępność | Playwright, axe | `cd frontend && npx playwright test` |
 | Docker — czysty start | Docker Compose, healthchecki | `docker compose down -v && docker compose up -d --build` |
 | Wydajność | `hey`, `EXPLAIN ANALYZE` | opis w `docs/PERFORMANCE.md` |
 | CI | GitHub Actions | workflow w `.github/workflows/ci.yml` |
+
+Wynik ZR-03 (2026-11-04, Node.js v22.19.0):
+
+```text
+OK: 28 przykładów JSON, 12 endpointów, 19 kodów głównych, 8 kodów pól, 5 pakietów, 1 przykład paginacji, wektor AES-256-GCM zgodny.
+```
 
 Testy negatywne obejmą w szczególności:
 
@@ -226,6 +269,8 @@ Testy negatywne obejmą w szczególności:
 - Lokalnie brak TLS; produkcja wymaga terminatora TLS i cookie `Secure`.
 - Brak tytułu wiadomości; lista identyfikuje wpisy datą i UUID. Dzięki temu w bazie nie ma tekstu jawnego użytkownika.
 - Domyślny klucz szyfrujący w Compose służy tylko do demo.
+- Kontrakt API jest zweryfikowany statycznie; brak działającego backendu oznacza, że `curl`, testy kontraktowe i E2E zostaną wykonane w kolejnych zadaniach.
+- OpenAPI/springdoc jest odłożone; kanonicznym dokumentem pozostaje `docs/API.md`.
 - Pełna lista otwartych kwestii i przyjętych wartości znajduje się w [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md).
 
 ## Decyzje architektoniczne
@@ -233,8 +278,9 @@ Testy negatywne obejmą w szczególności:
 - [`ADR-01`](docs/DECISIONS.md#adr-01--jeden-właściciel-wiadomości-brak-udostępniania-brak-e2ee) — jeden właściciel, brak udostępniania, brak E2EE.
 - [`ADR-07`](docs/DECISIONS.md#adr-07--konta-demonstracyjne-zamiast-publicznej-rejestracji) — konta demonstracyjne zamiast publicznej rejestracji.
 - [`ADR-08`](docs/DECISIONS.md#adr-08--model-danych-i-migracje) — UUID, relacja 1:N, brak `user_messages`.
+- [`ADR-09`](docs/DECISIONS.md#adr-09--kontrakt-api-dto-i-format-pakietu) — kontrakt API, DTO i format pakietu.
 
-Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`](docs/DECISIONS.md). Szczegóły schematu: [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md).
+Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`](docs/DECISIONS.md). Szczegóły schematu: [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md). Kontrakt HTTP: [`docs/API.md`](docs/API.md).
 
 ## Struktura repozytorium
 
@@ -242,6 +288,7 @@ Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`]
 .
 ├── README.md
 ├── docs/
+│   ├── API.md
 │   ├── DATA_MODEL.md
 │   ├── DECISIONS.md
 │   └── OPEN_QUESTIONS.md
@@ -250,6 +297,7 @@ Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`]
 │       ├── V1__create_app_users.sql
 │       └── V2__create_messages.sql
 ├── scripts/
+│   ├── validate-api-contract.mjs
 │   ├── validate-schema.sh
 │   └── validate-schema.sql
 ├── frontend/                # React + Vite (planowany)

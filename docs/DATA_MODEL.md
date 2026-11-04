@@ -6,6 +6,7 @@ Dokument opisuje model danych MVP, migracje projektowe oraz uzasadnienie zmian w
 - **Data:** 2026-11-04.
 - **Wymagania:** R04, R06, R09.
 - **Status:** model i migracje zweryfikowane na PostgreSQL 16; podłączenie Flyway i testów Testcontainers pozostaje do zadania backendowego.
+- **Kontrakt API:** [`docs/API.md`](API.md) — kanoniczny kontrakt HTTP, DTO, błędów i paginacji.
 
 ## Cele modelu
 
@@ -95,7 +96,7 @@ create index idx_messages_owner_created_id
     on messages (owner_id, created_at desc, id desc);
 ```
 
-Indeks obsługuje listę własnych wiadomości i stabilną paginację: `where owner_id = ? order by created_at desc, id desc`.
+Indeks obsługuje listę własnych wiadomości i stabilną paginację: `where owner_id = ? order by created_at desc, id desc`. Paginacja jest kursorowa i używa pary `(created_at, id)` jako pozycji; szczegóły w [`docs/API.md`](API.md#8-paginacja).
 
 ## Brak danych jawnych
 
@@ -109,7 +110,7 @@ Wszystkie treści użytkownika są przechowywane wyłącznie w zaszyfrowanej kop
 
 ## Normalizacja `username`
 
-- Aplikacja wykonuje `trim` i `toLowerCase(Locale.ROOT)` przed rejestracją i logowaniem.
+- Aplikacja wykonuje `trim` i `toLowerCase(Locale.ROOT)` przed seedem kont i logowaniem.
 - Baza wymusza `username = lower(btrim(username))`.
 - Unikalność dotyczy znormalizowanej wartości, więc `Alice` i `alice` nie mogą istnieć jednocześnie.
 - Dozwolone znaki: `a-z`, `0-9`, `.`, `_`, `-`; długość 3–50.
@@ -127,10 +128,13 @@ v1.<key_id>.<base64url(nonce)>.<base64url(ciphertext)>.<base64url(tag)>
 - `v1` odpowiada `format_version = 1`,
 - `key_id` odpowiada kolumnie `key_id`, np. `k1`,
 - `nonce` ma 12 bajtów,
+- `ciphertext` ma 1–40 000 bajtów,
 - `tag` ma 16 bajtów,
+- base64url jest kanoniczny, bez paddingu `=`,
+- cały pakiet ma maksymalnie 56 000 znaków,
 - AAD: `v1:<ownerId>:<keyId>`.
 
-Dzięki AAD pakiet jest powiązany z właścicielem i kluczem. Inne konto nie odszyfruje pakietu nawet po jego przechwyceniu.
+Dzięki AAD pakiet jest powiązany z właścicielem i kluczem. Inne konto nie odszyfruje pakietu nawet po jego przechwyceniu. Pełna gramatyka, kolejność walidacji i wektor testowy AES-256-GCM znajdują się w [`docs/API.md`](API.md#9-pakiet-i-aad).
 
 ## Limity
 
@@ -142,7 +146,7 @@ Dzięki AAD pakiet jest powiązany z właścicielem i kluczem. Inne konto nie od
 | Nonce | 12 bajtów |
 | Tag | 16 bajtów |
 | Pakiet | maks. 56 000 znaków |
-| Żądanie HTTP | maks. 64 KB |
+| Żądanie HTTP | maks. 65 536 B (64 KiB) |
 | Paginacja | domyślnie 10, maks. 50 |
 
 Limit 56 000 znaków pakietu wynika z base64url dla 40 000 B ciphertext (ok. 53 336 znaków) plus nonce, tag, `key_id` i separatory.

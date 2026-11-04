@@ -7,6 +7,7 @@ Dokument zbiera decyzje przyjęte w ramach zadania rekrutacyjnego. Numeracja jes
 | [ADR-01](#adr-01--jeden-właściciel-wiadomości-brak-udostępniania-brak-e2ee) | Jeden właściciel wiadomości, brak udostępniania, brak E2EE | Accepted | 2026-11-04 |
 | [ADR-07](#adr-07--konta-demonstracyjne-zamiast-publicznej-rejestracji) | Konta demonstracyjne zamiast publicznej rejestracji | Accepted | 2026-11-04 |
 | [ADR-08](#adr-08--model-danych-i-migracje) | Model danych i migracje | Accepted | 2026-11-04 |
+| [ADR-09](#adr-09--kontrakt-api-dto-i-format-pakietu) | Kontrakt API, DTO i format pakietu | Accepted | 2026-11-04 |
 
 ---
 
@@ -28,7 +29,7 @@ Bez jednoznacznej decyzji pojawiłyby się niejawne założenia dotyczące tego,
 2. Nie istnieje ACL, mechanizm udostępniania, role ani konto administracyjne z szerszym dostępem.
 3. Szyfrowanie odbywa się **po stronie serwera**:
    - algorytm AES-256-GCM,
-   - losowy IV 12 bajtów dla każdej operacji,
+   - losowy nonce 12 bajtów dla każdej operacji,
    - tag uwierzytelniający 128 bitów,
    - klucz 32 bajty przechowywany przez backend i ładowany z `APP_CRYPTO_KEY`.
 4. Backend przetwarza tekst jawny. **Nie jest to E2EE.**
@@ -160,6 +161,66 @@ Pierwotny szkic zakładał tabele `User`, `Message` i `UserMessage`. Nie rozstrz
 ### Powiązane wymagania
 
 R04, R06, R09.
+
+---
+
+## ADR-09 — Kontrakt API, DTO i format pakietu
+
+### Status
+
+**Accepted** — 2026-11-04.
+
+### Kontekst
+
+Frontend, backend i testy E2E potrzebują jednego, jednoznacznego kontraktu. Bez niego pojawiają się niejawne różnice w statusach HTTP, nazwach pól, paginacji, formacie błędów i sposobie przekazywania właściciela wiadomości. Model danych z ZR-02 ustala schemat i kopertę, ale nie rozstrzyga warstwy HTTP.
+
+### Decyzja
+
+1. API jest REST-owe, JSON UTF-8, pod ścieżką `/api`; nie ma wersji w URL.
+2. Uwierzytelnianie opiera się na sesji `JSESSIONID` i tokenie CSRF `X-XSRF-TOKEN`; nie ma JWT.
+3. Dla chronionych zasobów `401` ma pierwszeństwo przed `403`; logowanie zawsze wymaga CSRF.
+4. Błędy używają RFC 9457 (`application/problem+json`), `type = about:blank` i stabilnego pola `code`; `title` jest angielską nazwą statusu, `detail` jest polski.
+5. Właściciel pochodzi wyłącznie z sesji. Żaden DTO żądania nie ma pola właściciela, a nieznane pola JSON są odrzucane.
+6. Cudza i nieistniejąca wiadomość po `id` dają identyczne `404`. Cudzy pakiet wklejony bez `id` daje `422`, bo nie ma zasobu do ukrycia.
+7. Paginacja jest kursorowa, tylko „następna strona”, oparta o `(created_at desc, id desc)`; brak `total` i numerów stron.
+8. Pakiet ma format `v1.<key_id>.<base64url(nonce)>.<base64url(ciphertext)>.<base64url(tag)>`; base64url jest kanoniczny i bez paddingu; AAD to `v1:<ownerId>:<keyId>`.
+9. Zły format pakietu daje `400` z kodem `INVALID_PACKAGE_FORMAT` lub pokrewnym; poprawny format z niepasującym tagiem, AAD lub kluczem daje `422 DECRYPT_FAILED`.
+10. Wszystkie odpowiedzi `/api/**` mają `Cache-Control: no-store` i `X-Request-Id`; błędy nie powtarzają danych wejściowych.
+11. `docs/API.md` jest kanonicznym kontraktem. OpenAPI/springdoc jest odłożone; jeśli powstanie, musi być zgodne z tym dokumentem.
+12. ZR-03 definiuje DTO na poziomie kontraktu. Klasy Java i adnotacje walidacyjne powstają w zadaniu backendowym, razem z zależnościami Web/Security/Validation.
+
+### Konsekwencje
+
+**Pozytywne:**
+
+- Frontend i backend mają jednoznaczne pola, statusy i kody błędów.
+- Właściciel nie może zostać nadpisany przez DTO.
+- Kursor wykorzystuje istniejący indeks i jest stabilny przy wstawianiu nowych wiadomości.
+- `404` dla obcych zasobów nie ujawnia ich istnienia.
+- Wektor AES-GCM i walidator dokumentacji dają powtarzalny dowód poprawności formatu.
+- Kontrakt można wykorzystać w testach MockMvc, MSW i Playwright.
+
+**Negatywne:**
+
+- Brak OpenAPI oznacza ręczne utrzymywanie dokumentu; ogranicza to walidator i przegląd.
+- Paginacja kursorowa nie pozwala przeskoczyć do dowolnej strony.
+- `401` przed `403` wymaga niestandardowej konfiguracji CSRF względem domyślnego Spring Security.
+- `422` dla błędu tagu wymaga od klienta odróżnienia błędu formatu od błędu kryptograficznego.
+- DTO istnieją najpierw jako dokumentacja, więc kod backendu musi zostać z nimi zgodny w kolejnym zadaniu.
+
+### Odrzucone alternatywy
+
+- **GraphQL** — nadmiarowy względem trzech przepływów i utrudnia kontrolę statusów HTTP.
+- **JWT zamiast sesji** — zwiększa zakres, utrudnia unieważnianie i nie pasuje do CSRF opartego o cookie.
+- **Paginacja offsetowa** — mniej stabilna przy równoległych zapisach i słabiej wykorzystuje indeks.
+- **`403` dla cudzego zasobu** — ujawnia istnienie zasobu.
+- **`400` dla błędu tagu GCM** — zaciera granicę między złym formatem a nieudaną weryfikacją kryptograficzną.
+- **Pole `ownerId` w DTO** — otwiera drogę do nadpisania właściciela i łamie zasadę sesyjną.
+- **OpenAPI-first z generowaniem kodu** — dodatkowe narzędzia i ryzyko niekompatybilności ze Spring Boot 4.1.2; odłożone.
+
+### Powiązane wymagania
+
+R02, R03, R04, R06, R10.
 
 ---
 
