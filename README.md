@@ -2,7 +2,7 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-01 — potwierdzony zakres MVP i granice bezpieczeństwa. Implementacja nie została jeszcze rozpoczęta; dowody wykonania będą uzupełniane wraz z kolejnymi zadaniami.
+> **Status:** ZR-02 — model danych i migracje projektowe zweryfikowane na PostgreSQL 16. Backend pozostaje szkieletem; implementacja API jest w toku, a dowody wykonania będą uzupełniane wraz z kolejnymi zadaniami.
 
 ## Spis treści
 
@@ -75,7 +75,7 @@ Dostarczyć kompletne, uruchamiane lokalnie w Dockerze MVP, które pokazuje:
 - Wiadomości są szyfrowane po stronie serwera. Backend posiada klucz i przetwarza tekst jawny — **nie jest to E2EE**.
 - Wszystkie operacje na wiadomości są filtrowane po właścicielu. Próba odczytu, deszyfrowania lub usunięcia cudzego zasobu kończy się odpowiedzią `404`, bez ujawniania, czy zasób istnieje.
 - Wklejony pakiet jest powiązany z właścicielem przez dodatkowe dane uwierzytelniające (AAD). Inne konto nie odszyfruje pakietu nawet po jego przechwyceniu.
-- Treść wiadomości jest przechowywana wyłącznie jako szyfrogram. Tytuł wiadomości jest przechowywany jawnie, ale widoczny tylko dla właściciela.
+- Treść wiadomości jest przechowywana wyłącznie jako szyfrogram. W tabeli `messages` nie ma kolumny `title`, `content` ani `plaintext`; lista wiadomości używa daty i identyfikatora.
 - Tekst jawny nie jest zapisywany w `localStorage`, logach ani w treści błędów.
 - Odpowiedzi deszyfrowania są oznaczone `Cache-Control: no-store`.
 - Baza danych nie jest wystawiona na zewnątrz sieci Docker Compose.
@@ -101,20 +101,22 @@ Pozostałe ścieżki `/api/**` wymagają uwierzytelnienia. Logowanie jest public
 ### Szyfrowanie
 
 - Algorytm: AES-256-GCM.
-- Losowy IV (12 bajtów) dla każdej operacji szyfrowania.
-- Tag uwierzytelniający: 128 bitów.
-- Format pakietu: `v1.<base64url(iv)>.<base64url(ciphertext || tag)>`.
-- AAD: `v1:<ownerId>` — wiąże pakiet z właścicielem.
+- Losowy nonce (12 bajtów) dla każdej operacji szyfrowania.
+- Tag uwierzytelniający: 128 bitów (16 bajtów).
+- Format pakietu: `v1.<key_id>.<base64url(nonce)>.<base64url(ciphertext)>.<base64url(tag)>`.
+- AAD: `v1:<ownerId>:<keyId>` — wiąże pakiet z właścicielem i kluczem.
 - Klucz: 32 bajty z `APP_CRYPTO_KEY` w formacie base64; walidowany przy starcie aplikacji.
-- Brak rotacji kluczy w MVP; pole `key_version` rezerwuje miejsce na przyszłe wersjonowanie.
+- `key_id` (np. `k1`) i `format_version=1` są zapisywane w bazie i w kopercie.
+- Brak rotacji kluczy w MVP; `key_id` rezerwuje miejsce na przyszłe wersjonowanie.
 
 ### Limity i ochrona przed nadużyciami
 
 - Logowanie: 5 prób na minutę na parę IP + nazwa użytkownika.
 - Deszyfrowanie: 30 operacji na minutę na użytkownika.
 - Szyfrowanie: 60 operacji na minutę na użytkownika.
-- Maksymalna długość wiadomości: 10 000 znaków.
-- Maksymalny rozmiar pakietu: 20 000 znaków.
+- Maksymalna długość wiadomości: 10 000 punktów kodowych (maks. 40 000 bajtów UTF-8).
+- Maksymalny ciphertext: 40 000 bajtów; nonce: 12 bajtów; tag: 16 bajtów.
+- Maksymalny rozmiar pakietu: 56 000 znaków.
 - Maksymalny rozmiar żądania: 64 KB.
 - Przekroczenie limitu zwraca `429` z nagłówkiem `Retry-After`.
 
@@ -125,12 +127,12 @@ Pozostałe ścieżki `/api/**` wymagają uwierzytelnienia. Logowanie jest public
 | R01 | Frontend JavaScript z React/Angular | React + Vite + TypeScript (kompilowany do JavaScript); testy komponentów Vitest/RTL; E2E Playwright pełnego przepływu |
 | R02 | Logowanie i walidacja danych | Testy integracyjne logowania, błędnych danych, sesji i CSRF; scenariusz E2E |
 | R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Testy jednostkowe `CryptoService` (roundtrip, tampering, zły klucz, zły właściciel) oraz testy API |
-| R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje Flyway; testy integracyjne na PostgreSQL z Testcontainers; testy repozytorium i paginacji |
+| R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`/`V2`, ograniczenia CHECK, FK i indeks; walidacja na PostgreSQL 16 (`./scripts/validate-schema.sh`); docelowo Testcontainers |
 | R05 | Uruchomienie lokalne w Dockerze | Czysty start `docker compose down -v` → `docker compose up -d --build`; healthchecki; instrukcja w README |
 | R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Testy negatywne: walidacja, CSRF `403`, dwa konta i `404`, payloady SQLi/XSS, limit `429` |
 | R07 | Responsywność | Zrzuty ekranu Playwright przy 360, 768 i 1280 px |
 | R08 | Dostępność | Skan axe; checklista klawiatury, fokusu, etykiet i komunikatów dla czytnika ekranu |
-| R09 | Wydajność | Paginacja, indeks `(owner_id, created_at desc)`, limity; pomiary `hey` i `EXPLAIN ANALYZE` w `docs/PERFORMANCE.md` |
+| R09 | Wydajność | Paginacja, indeks `(owner_id, created_at desc, id desc)`, limity; pomiary `hey` i `EXPLAIN ANALYZE` w `docs/PERFORMANCE.md` |
 | R10 | Czytelność i podział na moduły | Podział backendu package-by-feature, osobne moduły `frontend`/`backend`, README, ADR, CI |
 
 ## Architektura docelowa
@@ -144,7 +146,7 @@ flowchart LR
 ```
 
 - `frontend/` — SPA React + Vite + TypeScript, budowana do statycznych plików i serwowana przez nginx.
-- `backend/` — Spring Boot 4.1.2, Java 17, Spring Web, Security, Validation, Data JPA, Flyway.
+- `backend/` — Spring Boot 4.1.2, Java 17, Spring Web, Security, Validation, Data JPA, Flyway; migracje w `src/main/resources/db/migration`.
 - `db` (usługa Compose) — PostgreSQL 16 z wolumenem i healthcheckiem.
 - nginx pełni rolę reverse proxy dla `/api`, dzięki czemu frontend i backend są w tej samej origin i nie jest potrzebny CORS.
 
@@ -199,6 +201,7 @@ Konta są tworzone tylko przy `APP_DEMO_USERS=true` (profil lokalny/demo):
 | Warstwa | Narzędzia | Planowana komenda |
 |---|---|---|
 | Backend — jednostkowe i integracyjne | JUnit 5, MockMvc, Testcontainers | `cd backend && ./mvnw verify` |
+| Schemat bazy i migracje | PostgreSQL 16, psql, Docker | `./scripts/validate-schema.sh` |
 | Frontend — jednostkowe i komponentowe | Vitest, React Testing Library, MSW | `cd frontend && npm run test -- --run` |
 | E2E i dostępność | Playwright, axe | `cd frontend && npx playwright test` |
 | Docker — czysty start | Docker Compose, healthchecki | `docker compose down -v && docker compose up -d --build` |
@@ -218,10 +221,10 @@ Testy negatywne obejmą w szczególności:
 ## Ograniczenia i otwarte kwestie
 
 - Aplikacja jest projektowana jako **jedna instancja**. Sesje i limity prób są przechowywane w pamięci; restart wymaga ponownego logowania.
-- Brak rotacji kluczy; `key_version=1`.
+- Brak rotacji kluczy; `key_id=k1`, `format_version=1`.
 - Brak kopii zapasowych i polityki retencji danych.
 - Lokalnie brak TLS; produkcja wymaga terminatora TLS i cookie `Secure`.
-- Tytuł wiadomości jest przechowywany jawnie, ale widoczny tylko dla właściciela; szyfrowana jest treść.
+- Brak tytułu wiadomości; lista identyfikuje wpisy datą i UUID. Dzięki temu w bazie nie ma tekstu jawnego użytkownika.
 - Domyślny klucz szyfrujący w Compose służy tylko do demo.
 - Pełna lista otwartych kwestii i przyjętych wartości znajduje się w [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md).
 
@@ -229,8 +232,9 @@ Testy negatywne obejmą w szczególności:
 
 - [`ADR-01`](docs/DECISIONS.md#adr-01--jeden-właściciel-wiadomości-brak-udostępniania-brak-e2ee) — jeden właściciel, brak udostępniania, brak E2EE.
 - [`ADR-07`](docs/DECISIONS.md#adr-07--konta-demonstracyjne-zamiast-publicznej-rejestracji) — konta demonstracyjne zamiast publicznej rejestracji.
+- [`ADR-08`](docs/DECISIONS.md#adr-08--model-danych-i-migracje) — UUID, relacja 1:N, brak `user_messages`.
 
-Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`](docs/DECISIONS.md).
+Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`](docs/DECISIONS.md). Szczegóły schematu: [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md).
 
 ## Struktura repozytorium
 
@@ -238,9 +242,16 @@ Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`]
 .
 ├── README.md
 ├── docs/
+│   ├── DATA_MODEL.md
 │   ├── DECISIONS.md
 │   └── OPEN_QUESTIONS.md
 ├── backend/                 # Spring Boot (rozwijany w kolejnych zadaniach)
+│   └── src/main/resources/db/migration/
+│       ├── V1__create_app_users.sql
+│       └── V2__create_messages.sql
+├── scripts/
+│   ├── validate-schema.sh
+│   └── validate-schema.sql
 ├── frontend/                # React + Vite (planowany)
 ├── docker-compose.yml       # planowany
 └── .env.example             # planowany
