@@ -22,3 +22,7 @@ npm-debug.log*
 
 # Logs
 *.log
+
+# Agent tooling
+.agents/
+skills-lock.json
