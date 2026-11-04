@@ -54,6 +54,7 @@ Stan na **2026-11-04**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q38 | Kolejność CSRF | Dla chronionych zasobów `401` przed `403`; logowanie zawsze wymaga CSRF | Przyjęte | ADR-09, R02/R06 |
 | Q39 | Cache i korelacja | `Cache-Control: no-store` na `/api/**`; `X-Request-Id` i `traceId` w błędach | Przyjęte | ADR-09, R06/R10 |
 | Q40 | Wersjonowanie API | Brak wersji w URL; zmiany additive, breaking wymaga `/api/v2`; pakiet ma własne `v1` | Przyjęte | ADR-09 |
+| Q41 | Toolchain i sekrety | Node 22.19, React 19.3.1, Vite 7.3.7, TS 6.0.3, Spring Boot 4.1.2 / Java 17, ESLint+Prettier, Spotless+Enforcer, `.env.example` i `check-secrets.sh` | Przyjęte | ADR-10, R01/R03/R10 |
 
 ## Zasady rozstrzygania
 

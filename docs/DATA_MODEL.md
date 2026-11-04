@@ -5,7 +5,7 @@ Dokument opisuje model danych MVP, migracje projektowe oraz uzasadnienie zmian w
 - **Zadanie:** ZR-02 — model danych i migracje projektowe.
 - **Data:** 2026-11-04.
 - **Wymagania:** R04, R06, R09.
-- **Status:** model i migracje zweryfikowane na PostgreSQL 16; podłączenie Flyway i testów Testcontainers pozostaje do zadania backendowego.
+- **Status:** model i migracje zweryfikowane na PostgreSQL 16; Flyway i Testcontainers są podłączone, a test kontekstu wykonuje `V1`/`V2` (`cd backend && ./mvnw verify`).
 - **Kontrakt API:** [`docs/API.md`](API.md) — kanoniczny kontrakt HTTP, DTO, błędów i paginacji.
 
 ## Cele modelu
@@ -209,7 +209,7 @@ Struktura tabel została dodatkowo sprawdzona przez `\d+ app_users` i `\d+ messa
 
 ## Ograniczenia i następne kroki
 
-- Flyway nie jest jeszcze podłączony do backendu; migracje są gotowe w standardowej lokalizacji `db/migration`.
-- Testy Testcontainers zostaną dodane razem z konfiguracją backendu i datasource.
+- Flyway jest podłączony po stronie backendu i wykonuje `V1`/`V2` przy starcie oraz w teście Testcontainers.
+- Test kontekstu używa Testcontainers PostgreSQL 16 i sprawdza obecność obu tabel; pełne testy repozytorium powstaną wraz z implementacją modułu wiadomości.
 - Seed kont demo pozostaje w warstwie aplikacji, nie w migracji SQL.
 - Rotacja kluczy jest poza MVP; `key_id` i `format_version` rezerwują miejsce na przyszłe wersje.

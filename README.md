@@ -2,7 +2,9 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-03 — kontrakt DTO, API i formatu pakietu zamknięty i zweryfikowany statycznie. Endpointy nie są jeszcze zaimplementowane; backend pozostaje szkieletem, a dowody działania będą uzupełniane wraz z kolejnymi zadaniami.
+> **Status:** ZR-04 — repozytorium oraz szkielety frontendu (React + Vite + TypeScript) i backendu (Spring Boot 4.1.2) budują się lokalnie. Toolchain, lint, formatter i higiena sekretów działają. Endpointy nie są jeszcze zaimplementowane; Docker Compose i testy E2E należą do kolejnych zadań.
+
+**Repozytorium:** <https://github.com/Aszlaczek/encryption>
 
 ## Spis treści
 
@@ -13,6 +15,8 @@ Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomo�
 - [Kontrakt API](#kontrakt-api)
 - [Wymagania R01–R10 i planowane dowody](#wymagania-r01r10-i-planowane-dowody)
 - [Architektura docelowa](#architektura-docelowa)
+- [Wersje i toolchain](#wersje-i-toolchain)
+- [Uruchomienie lokalne](#uruchomienie-lokalne)
 - [Uruchomienie w Dockerze](#uruchomienie-w-dockerze)
 - [Konta demonstracyjne](#konta-demonstracyjne)
 - [Testy i weryfikacja](#testy-i-weryfikacja)
@@ -160,16 +164,16 @@ node scripts/validate-api-contract.mjs
 
 | ID | Wymaganie | Planowany dowód |
 |---|---|---|
-| R01 | Frontend JavaScript z React/Angular | React + Vite + TypeScript (kompilowany do JavaScript); testy komponentów Vitest/RTL; E2E Playwright pełnego przepływu |
+| R01 | Frontend JavaScript z React/Angular | Szkielet React 19 + Vite 7 + TypeScript 6; `npm run build` oraz 3 testy komponentów (Vitest + RTL); E2E Playwright w kolejnym zadaniu |
 | R02 | Logowanie i walidacja danych | Kontrakt logowania, sesji i CSRF w `docs/API.md`; walidacja przykładów i kodów błędów (`node scripts/validate-api-contract.mjs`); testy integracyjne i E2E w kolejnych zadaniach |
-| R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Kontrakt pakietu, AAD i wektor AES-256-GCM w `docs/API.md`; walidator odszyfrowuje i ponownie szyfruje wektor; testy jednostkowe `CryptoService` w kolejnym zadaniu |
-| R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`/`V2`, ograniczenia CHECK, FK i indeks; walidacja na PostgreSQL 16 (`./scripts/validate-schema.sh`); kontrakt CRUD i paginacji w `docs/API.md`; docelowo Testcontainers |
-| R05 | Uruchomienie lokalne w Dockerze | Czysty start `docker compose down -v` → `docker compose up -d --build`; healthchecki; instrukcja w README |
+| R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Spring Boot 4.1.2 / Java 17; `./mvnw verify` z Testcontainers PostgreSQL 16 i Flyway; kontrakt AES-256-GCM w `docs/API.md`; implementacja `CryptoService` w kolejnym zadaniu |
+| R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`/`V2`, ograniczenia CHECK, FK i indeks; walidacja na PostgreSQL 16 (`./scripts/validate-schema.sh`); test kontekstu na Testcontainers; kontrakt CRUD i paginacji w `docs/API.md` |
+| R05 | Uruchomienie lokalne w Dockerze | Czysty start `docker compose down -v` → `docker compose up -d --build`; healthchecki; instrukcja w README (zadanie Docker Compose) |
 | R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Macierz statusów, katalog kodów, `404` dla obcych zasobów i limity w `docs/API.md`; walidacja spójności dokumentacji; testy negatywne w kolejnych zadaniach |
-| R07 | Responsywność | Zrzuty ekranu Playwright przy 360, 768 i 1280 px |
-| R08 | Dostępność | Skan axe; checklista klawiatury, fokusu, etykiet i komunikatów dla czytnika ekranu |
+| R07 | Responsywność | Strona główna responsywna od 320 px; zrzuty ekranu Playwright przy 360, 768 i 1280 px w kolejnym zadaniu |
+| R08 | Dostępność | Semantyczne nagłówki, landmarki, skip link i widoczny focus; skan axe w kolejnym zadaniu |
 | R09 | Wydajność | Paginacja, indeks `(owner_id, created_at desc, id desc)`, limity; pomiary `hey` i `EXPLAIN ANALYZE` w `docs/PERFORMANCE.md` |
-| R10 | Czytelność i podział na moduły | Podział backendu package-by-feature, osobne moduły `frontend`/`backend`, README, ADR, CI |
+| R10 | Czytelność i podział na moduły | Backend package-by-feature, frontend `features/*` + `shared/*`, ESLint/Prettier/Spotless/Enforcer, README, ADR-10; CI w kolejnym zadaniu |
 
 ## Architektura docelowa
 
@@ -185,6 +189,83 @@ flowchart LR
 - `backend/` — Spring Boot 4.1.2, Java 17, Spring Web, Security, Validation, Data JPA, Flyway; migracje w `src/main/resources/db/migration`.
 - `db` (usługa Compose) — PostgreSQL 16 z wolumenem i healthcheckiem.
 - nginx pełni rolę reverse proxy dla `/api`, dzięki czemu frontend i backend są w tej samej origin i nie jest potrzebny CORS.
+
+## Wersje i toolchain
+
+Wersje są przypięte dokładnie: `package.json` bez zakresów `^`/`~`, `package-lock.json` w repozytorium, wersja parenta i pluginów Maven w `pom.xml`, dystrybucja Mavena w wrapperze, a Node w `.nvmrc` i `engines`.
+
+| Obszar | Wersja | Przypięcie / uwagi |
+|---|---|---|
+| Node.js | 22.19.0 (LTS) | `.nvmrc` = `22`, `engines` = `>=22.13.0 <23` |
+| npm | 11.16.0 | `package-lock.json` |
+| React / React DOM | 19.3.1 | dokładna wersja |
+| Vite | 7.3.7 | dokładna wersja |
+| TypeScript | 6.0.3 | dokładna wersja; `tsc -b` |
+| ESLint | 10.14.0 | flat config, `typescript-eslint` 8.72.1 |
+| Prettier | 3.9.10 | konfiguracja w `frontend/.prettierrc.json` |
+| Vitest / jsdom | 5.1.0 / 29.0.0 | dokładne wersje |
+| Java (target) | 17 | `java.version` i `release 17` |
+| JDK lokalny | 27.0.1 | Spring Boot 4.1.2 wspiera Javę 17–27 |
+| Spring Boot | 4.1.2 | parent w `backend/pom.xml` |
+| Maven | 3.10.0 | wrapper `backend/mvnw` |
+| PostgreSQL | 16 | obraz `postgres:16-alpine` w testach |
+| Testcontainers | 2.0.5 | wersja z BOM Spring Boota |
+| Spotless / Enforcer | 3.11.0 / 3.7.0 | formatter i walidacja środowiska |
+
+Dlaczego takie wersje:
+
+- **Vite 7 + `@vitejs/plugin-react` 5.2** — plugin-react 6 wymaga Vite 8; wybrano stabilną parę 7.x/5.x.
+- **TypeScript 6.0.3** — `typescript-eslint` 8.72 wspiera TypeScript `<6.1.0`, więc TypeScript 7 nie jest jeszcze objęty wsparciem.
+- **jsdom 29** — jsdom 30 wymaga Node `^22.22.2`, a środowisko projektu to Node 22.19.0.
+- **Java 17 target przy JDK 27** — Spring Boot 4.1.2 oficjalnie wspiera Javę 17–27; obraz Docker z JDK 17 powstanie w zadaniu R05.
+
+## Uruchomienie lokalne
+
+Frontend:
+
+```bash
+cd frontend
+nvm use
+npm ci
+npm run dev        # http://localhost:5173
+```
+
+Backend wymaga PostgreSQL. Najprościej uruchomić samą bazę w Dockerze:
+
+```bash
+docker run --rm --name encryption-db \
+  -e POSTGRES_DB=encryption \
+  -e POSTGRES_USER=encryption \
+  -e POSTGRES_PASSWORD=change-me \
+  -p 5432:5432 postgres:16-alpine
+```
+
+Następnie w drugim terminalu:
+
+```bash
+cd backend
+./mvnw spring-boot:run
+```
+
+Build, testy i lint (bez uruchamiania serwera):
+
+```bash
+cd frontend
+npm ci
+npm run lint
+npm run format:check
+npm run test
+npm run build
+
+cd ../backend
+./mvnw verify      # Spotless, JUnit 5, Testcontainers (wymaga Dockera)
+```
+
+Sekrety:
+
+```bash
+./scripts/check-secrets.sh
+```
 
 ## Uruchomienie w Dockerze
 
@@ -234,16 +315,34 @@ Konta są tworzone tylko przy `APP_DEMO_USERS=true` (profil lokalny/demo):
 
 ## Testy i weryfikacja
 
-| Warstwa | Narzędzia | Planowana komenda |
+| Warstwa | Narzędzia | Komenda |
 |---|---|---|
-| Backend — jednostkowe i integracyjne | JUnit 5, MockMvc, Testcontainers | `cd backend && ./mvnw verify` |
+| Backend — jednostkowe i integracyjne | JUnit 5, Testcontainers | `cd backend && ./mvnw verify` |
+| Backend — format i higiena | Spotless, Enforcer | `cd backend && ./mvnw spotless:check verify` |
 | Schemat bazy i migracje | PostgreSQL 16, psql, Docker | `./scripts/validate-schema.sh` |
 | Kontrakt API i dokumentacja | Node.js, `node:crypto` | `node scripts/validate-api-contract.mjs` |
-| Frontend — jednostkowe i komponentowe | Vitest, React Testing Library, MSW | `cd frontend && npm run test -- --run` |
-| E2E i dostępność | Playwright, axe | `cd frontend && npx playwright test` |
-| Docker — czysty start | Docker Compose, healthchecki | `docker compose down -v && docker compose up -d --build` |
+| Frontend — jednostkowe i komponentowe | Vitest, React Testing Library | `cd frontend && npm run test` |
+| Frontend — lint i format | ESLint, Prettier | `cd frontend && npm run lint && npm run format:check` |
+| Sekrety | `git grep`, `.gitignore` | `./scripts/check-secrets.sh` |
+| E2E i dostępność | Playwright, axe | `cd frontend && npx playwright test` (kolejne zadanie) |
+| Docker — czysty start | Docker Compose, healthchecki | `docker compose down -v && docker compose up -d --build` (zadanie R05) |
 | Wydajność | `hey`, `EXPLAIN ANALYZE` | opis w `docs/PERFORMANCE.md` |
-| CI | GitHub Actions | workflow w `.github/workflows/ci.yml` |
+| CI | GitHub Actions | workflow w `.github/workflows/ci.yml` (kolejne zadanie) |
+
+Wynik ZR-04 (2026-11-04, Node.js 22.19.0, npm 11.16.0, JDK 27.0.1, Maven 3.10.0, Docker 29.9.1):
+
+```text
+Frontend  npm run lint          -> OK
+Frontend  npm run format:check  -> All matched files use Prettier code style!
+Frontend  npm run test          -> Test Files 1 passed (1), Tests 3 passed (3)
+Frontend  npm run build         -> dist/ wygenerowany
+Backend   ./mvnw verify         -> Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+                                   Flyway: Successfully applied 2 migrations (v1, v2)
+                                   Spotless: check passed; BUILD SUCCESS
+Backend   java -jar ...         -> Started BackendApplication; /actuator/health -> HTTP 200
+Frontend  vite dev              -> HTTP 200, <html lang="pl">, link do repozytorium w dist/
+Sekrety   ./scripts/check-secrets.sh -> OK: brak sekretów w trackowanych plikach
+```
 
 Wynik ZR-03 (2026-11-04, Node.js v22.19.0):
 
@@ -269,7 +368,11 @@ Testy negatywne obejmą w szczególności:
 - Lokalnie brak TLS; produkcja wymaga terminatora TLS i cookie `Secure`.
 - Brak tytułu wiadomości; lista identyfikuje wpisy datą i UUID. Dzięki temu w bazie nie ma tekstu jawnego użytkownika.
 - Domyślny klucz szyfrujący w Compose służy tylko do demo.
-- Kontrakt API jest zweryfikowany statycznie; brak działającego backendu oznacza, że `curl`, testy kontraktowe i E2E zostaną wykonane w kolejnych zadaniach.
+- Kontrakt API jest zweryfikowany statycznie; endpointy nie są jeszcze zaimplementowane, więc `curl` i testy kontraktowe wykonamy w kolejnych zadaniach.
+- Frontend jest szkieletem strony głównej; formularze logowania i szyfrowania powstaną w kolejnych zadaniach.
+- Backend nie ma jeszcze konfiguracji Spring Security zgodnej z `docs/API.md`; domyślne zabezpieczenia Springa blokują endpointy do czasu implementacji.
+- Docker Compose całego stosu jeszcze nie istnieje; dostępny jest pojedynczy kontener PostgreSQL do testów i pracy lokalnej.
+- Skrypt `check-secrets.sh` jest heurystyczny i nie zastępuje skanera historii Git.
 - OpenAPI/springdoc jest odłożone; kanonicznym dokumentem pozostaje `docs/API.md`.
 - Pełna lista otwartych kwestii i przyjętych wartości znajduje się w [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md).
 
@@ -279,6 +382,7 @@ Testy negatywne obejmą w szczególności:
 - [`ADR-07`](docs/DECISIONS.md#adr-07--konta-demonstracyjne-zamiast-publicznej-rejestracji) — konta demonstracyjne zamiast publicznej rejestracji.
 - [`ADR-08`](docs/DECISIONS.md#adr-08--model-danych-i-migracje) — UUID, relacja 1:N, brak `user_messages`.
 - [`ADR-09`](docs/DECISIONS.md#adr-09--kontrakt-api-dto-i-format-pakietu) — kontrakt API, DTO i format pakietu.
+- [`ADR-10`](docs/DECISIONS.md#adr-10--wersje-toolchain-i-higiena-sekretów) — wersje, toolchain i higiena sekretów.
 
 Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`](docs/DECISIONS.md). Szczegóły schematu: [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md). Kontrakt HTTP: [`docs/API.md`](docs/API.md).
 
@@ -287,20 +391,44 @@ Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`]
 ```text
 .
 ├── README.md
+├── .env.example              # wyłącznie placeholdery, bez sekretów
 ├── docs/
 │   ├── API.md
 │   ├── DATA_MODEL.md
 │   ├── DECISIONS.md
 │   └── OPEN_QUESTIONS.md
-├── backend/                 # Spring Boot (rozwijany w kolejnych zadaniach)
-│   └── src/main/resources/db/migration/
-│       ├── V1__create_app_users.sql
-│       └── V2__create_messages.sql
+├── backend/
+│   ├── pom.xml               # Spring Boot 4.1.2, Java 17, zależności i pluginy
+│   ├── eclipse-formatter.xml # konfiguracja Spotless
+│   ├── mvnw / mvnw.cmd
+│   └── src/
+│       ├── main/java/com/szlaczek/backend/
+│       │   ├── BackendApplication.java
+│       │   ├── auth/         # logowanie, sesja, CSRF
+│       │   ├── crypto/       # AES-256-GCM, format pakietu
+│       │   ├── message/      # wiadomości i paginacja
+│       │   └── common/
+│       │       ├── security/ # konfiguracja bezpieczeństwa
+│       │       └── web/      # błędy RFC 9457, nagłówki
+│       ├── main/resources/
+│       │   ├── application.properties
+│       │   └── db/migration/{V1__create_app_users.sql, V2__create_messages.sql}
+│       └── test/java/com/szlaczek/backend/BackendApplicationTests.java
+├── frontend/
+│   ├── package.json / package-lock.json
+│   ├── eslint.config.js / .prettierrc.json
+│   ├── src/
+│   │   ├── app/              # App.tsx, main.tsx, testy
+│   │   ├── features/         # auth/, crypto/, messages/
+│   │   ├── shared/           # api/, ui/
+│   │   ├── styles/
+│   │   └── test/
+│   └── README.md
 ├── scripts/
+│   ├── check-secrets.sh
 │   ├── validate-api-contract.mjs
 │   ├── validate-schema.sh
 │   └── validate-schema.sql
-├── frontend/                # React + Vite (planowany)
-├── docker-compose.yml       # planowany
-└── .env.example             # planowany
+├── docker-compose.yml        # planowany (R05)
+└── .github/workflows/ci.yml  # planowany (CI)
 ```

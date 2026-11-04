@@ -8,6 +8,7 @@ Dokument zbiera decyzje przyjęte w ramach zadania rekrutacyjnego. Numeracja jes
 | [ADR-07](#adr-07--konta-demonstracyjne-zamiast-publicznej-rejestracji) | Konta demonstracyjne zamiast publicznej rejestracji | Accepted | 2026-11-04 |
 | [ADR-08](#adr-08--model-danych-i-migracje) | Model danych i migracje | Accepted | 2026-11-04 |
 | [ADR-09](#adr-09--kontrakt-api-dto-i-format-pakietu) | Kontrakt API, DTO i format pakietu | Accepted | 2026-11-04 |
+| [ADR-10](#adr-10--wersje-toolchain-i-higiena-sekretów) | Wersje, toolchain i higiena sekretów | Accepted | 2026-11-04 |
 
 ---
 
@@ -221,6 +222,62 @@ Frontend, backend i testy E2E potrzebują jednego, jednoznacznego kontraktu. Bez
 ### Powiązane wymagania
 
 R02, R03, R04, R06, R10.
+
+---
+
+## ADR-10 — Wersje, toolchain i higiena sekretów
+
+### Status
+
+**Accepted** — 2026-11-04.
+
+### Kontekst
+
+Repozytorium musi budować się powtarzalnie u rekrutera i w CI. Wersje muszą być wzajemnie zgodne, a konfiguracja nie może zależeć od tego, jakie JDK, Node albo wtyczki ma akurat zainstalowane recenzent. Jednocześnie repozytorium nie może zawierać sekretów, a oba moduły muszą mieć czytelny podział odpowiedzialności.
+
+### Decyzja
+
+1. Frontend: React 19.3.1, React DOM 19.3.1, Vite 7.3.7, `@vitejs/plugin-react` 5.2.0, TypeScript 6.0.3, Vitest 5.1.0, jsdom 29.0.0.
+2. Wersje frontendu są dokładne (bez `^` i `~`), a `package-lock.json` jest commitowany. Node jest przypięty przez `.nvmrc` = `22` i `engines` = `>=22.13.0 <23`.
+3. Backend: Spring Boot 4.1.2 jako parent, `java.version=17`, Maven wrapper 3.10.0, zależności zarządzane przez BOM Spring Boota.
+4. Testy backendu używają Testcontainers 2.0.5 i obrazu `postgres:16-alpine`; Flyway wykonuje `V1`/`V2` w testowym kontekście.
+5. Lint i format: ESLint flat config + Prettier dla frontendu; Spotless (formatter Eclipse) + Maven Enforcer dla backendu. `spotless:check` jest częścią `verify`.
+6. Sekrety: `.env` i pokrewne pliki są ignorowane, w repozytorium jest tylko `.env.example` z placeholderami, a `scripts/check-secrets.sh` skanuje pliki trackowane i untracked.
+7. Podział modułów: backend package-by-feature (`auth`, `crypto`, `message`, `common.*`), frontend `app`/`features`/`shared`.
+8. Świadomie nie dodajemy Lomboka, OpenAPI ani CI w tym zadaniu.
+
+### Konsekwencje
+
+**Pozytywne:**
+
+- Build jest powtarzalny: dokładne wersje npm, lockfile, wrapper Mavena i BOM.
+- Projekt buduje się na JDK 27, a target pozostaje Java 17; Spring Boot 4.1.2 wspiera oba.
+- Formatter Eclipse działa na JDK 27, w przeciwieństwie do formatterów opartych o wewnętrzne API javac.
+- Test kontekstu realnie uruchamia PostgreSQL 16 i migracje, a nie tylko kompiluje kod.
+- Skan sekretów ma test negatywny i wykrywa niepuste `APP_CRYPTO_KEY`.
+- Granice modułów są widoczne w strukturze katalogów i `package-info.java`.
+
+**Negatywne:**
+
+- TypeScript jest przypięty do 6.0.3, mimo że dostępny jest 7.x; wynika to z zakresu wsparcia `typescript-eslint`.
+- Vite 7 i plugin-react 5 są starsze niż Vite 8 i plugin-react 6; aktualizacja wymaga osobnej weryfikacji.
+- jsdom 29 jest starszy niż 30 z powodu wymagań Node 22.22.2.
+- `check-secrets.sh` jest heurystyczny i nie przeszukuje historii Git.
+- Brak CI oznacza, że kontrole trzeba uruchamiać lokalnie do czasu dodania workflow.
+
+### Odrzucone alternatywy
+
+- **Palantir Java Format 2.103.0** — test na JDK 27 zakończył się `NoSuchFieldError: JCTree$JCCompilationUnit.endPositions`; formatter wymagałby obejść z `--add-exports`.
+- **Google Java Format 2.0.0** — ten sam mechanizm wewnętrznego API javac, więc to samo ryzyko.
+- **TypeScript 7.0.2** — `typescript-eslint` 8.72 wspiera `<6.1.0`; build lintu nie byłby wspierany.
+- **Vite 8 + plugin-react 6** — nowsza para, ale wybrano stabilną i sprawdzoną 7/5.
+- **jsdom 30** — wymaga Node `^22.22.2`, a środowisko ma 22.19.0.
+- **Checkstyle** — duplikuje częściowo Spotless i generuje szum; Enforcer pilnuje wersji Java i Mavena.
+- **Commitowany `.env` z wartościami demo** — zbyt łatwo zastąpić placeholder prawdziwym sekretem.
+
+### Powiązane wymagania
+
+R01, R03, R10.
 
 ---
 
