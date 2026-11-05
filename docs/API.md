@@ -110,6 +110,7 @@ Dla chronionych zasobów **401 ma pierwszeństwo przed 403**. CSRF dotyczy zalog
 
 - Login jest normalizowany: `trim` (białe znaki ASCII) + `toLowerCase(Locale.ROOT)`.
 - Hasło nie jest przycinane ani normalizowane; spacje są znaczące.
+- Hasła są weryfikowane Argon2id (salt 16 B, hash 32 B, parallelism 1, memory 16 MiB, iterations 2); limit wejścia wynosi 1–128 B UTF-8.
 - Błędne hasło, nieistniejący login i konto wyłączone zwracają **identyczną** odpowiedź `401 INVALID_CREDENTIALS`.
 - Dla nieistniejącego loginu backend wykonuje kosztowne porównanie z atrapą hasha, żeby nie ujawniać istnienia konta czasem odpowiedzi.
 - Po przekroczeniu 5 nieudanych prób w ciągu 60 sekund dla pary IP + znormalizowany login (szósta i kolejna próba) → `429 RATE_LIMITED`.
@@ -133,7 +134,7 @@ Dla chronionych zasobów **401 ma pierwszeństwo przed 403**. CSRF dotyczy zalog
 | | `headerName` | string | tak | zawsze `X-XSRF-TOKEN` |
 | | `cookieName` | string | tak | zawsze `XSRF-TOKEN` |
 | `LoginRequest` | `username` | string | tak | po normalizacji 1–50 znaków; bez kontroli formatu poza długością |
-| | `password` | string | tak | 1–72 B UTF-8; bez przycinania; limit zgodny z BCrypt |
+| | `password` | string | tak | 1–128 B UTF-8; bez przycinania; limit wejścia, nie ograniczenie Argon2id |
 | `UserResponse` | `id` | UUID | tak | kanoniczny UUID |
 | | `username` | string | tak | znormalizowany login |
 | `EncryptRequest` | `plaintext` | string | tak | 1–10 000 punktów kodowych, ≤40 000 B UTF-8, nie blank |
@@ -867,7 +868,7 @@ Błędy 1–3, 5, 7–8 → `400 INVALID_PACKAGE_FORMAT`. Błąd 4 → `400 UNSU
 | `limit` | 1–50, domyślnie 10 | kontroler | `400 VALIDATION_FAILED` |
 | `cursor` | ≤512 znaków | kontroler | `400 INVALID_CURSOR` |
 | `username` (login) | 1–50 po normalizacji | walidator aplikacyjny | `400 VALIDATION_FAILED` |
-| `password` | 1–72 B UTF-8 | walidator aplikacyjny | `400 VALIDATION_FAILED` |
+| `password` | 1–128 B UTF-8 | walidator aplikacyjny | `400 VALIDATION_FAILED` |
 
 Limity szybkości:
 

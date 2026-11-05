@@ -86,7 +86,7 @@ class PersistenceIntegrationTests {
                         "messages_tag_length");
 
         assertThat(jdbcTemplate.queryForObject("select count(*) from flyway_schema_history", Integer.class))
-                .isEqualTo(2);
+                .isEqualTo(3);
     }
 
     @Test
@@ -97,7 +97,7 @@ class PersistenceIntegrationTests {
 
         assertThat(result.migrationsExecuted).isZero();
         assertThat(flyway.info().pending()).isEmpty();
-        assertThat(flyway.info().applied()).hasSize(2);
+        assertThat(flyway.info().applied()).hasSize(3);
         assertThat(schemaFingerprint()).isEqualTo(schemaBefore);
         flyway.validate();
     }

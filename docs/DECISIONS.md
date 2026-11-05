@@ -11,6 +11,7 @@ Dokument zbiera decyzje przyjęte w ramach zadania rekrutacyjnego. Numeracja jes
 | [ADR-10](#adr-10--wersje-toolchain-i-higiena-sekretów) | Wersje, toolchain i higiena sekretów | Accepted | 2026-11-04 |
 | [ADR-11](#adr-11--topologia-docker-compose) | Topologia Docker Compose | Accepted | 2026-11-05 |
 | [ADR-12](#adr-12--mapowanie-jpa-i-repozytoria) | Mapowanie JPA i repozytoria | Accepted | 2026-11-05 |
+| [ADR-13](#adr-13--argon2id-i-konta-demo-w-profilu-local) | Argon2id i konta demo w profilu local | Accepted | 2026-11-05 |
 
 ---
 
@@ -75,6 +76,8 @@ R01, R02, R03, R04, R06, R10.
 
 **Accepted** — 2026-11-04.
 
+> **Aktualizacja 2026-11-05:** punkty 2, 3 i 6 (flaga `APP_DEMO_USERS`, BCrypt) zostały zastąpione przez ADR-13. Konta są seedowane tylko w profilu `local`, a hasła hashuje Argon2id.
+
 ### Kontekst
 
 Celem zadania jest ocena przepływu szyfrowania, kontroli dostępu i jakości implementacji, a nie systemu rejestracji. Publiczna rejestracja zwiększa zakres, ryzyko nadużyć i liczbę scenariuszy testowych (weryfikacja e-mail, polityka haseł, ochrona przed spamem).
@@ -133,7 +136,7 @@ Pierwotny szkic zakładał tabele `User`, `Message` i `UserMessage`. Nie rozstrz
 6. Koperta wiadomości składa się z `nonce` (12 B), `ciphertext` (1–40 000 B), `tag` (16 B), `key_id` i `format_version`; algorytm jest jawny jako `AES-256-GCM`.
 7. `username` jest normalizowany do małych liter i przycinany; unikalność i format wymusza baza.
 8. Indeks `idx_messages_owner_created_id` obsługuje paginację `(owner_id, created_at desc, id desc)`.
-9. Migracje `V1__create_app_users.sql` i `V2__create_messages.sql` są walidowane na PostgreSQL 16. Seed kont demo pozostaje w warstwie aplikacji.
+9. Migracje `V1__create_app_users.sql`, `V2__create_messages.sql` i `V3__update_password_hash_comment.sql` są walidowane na PostgreSQL 16. Seed kont demo pozostaje w warstwie aplikacji.
 
 ### Konsekwencje
 
@@ -241,8 +244,8 @@ Repozytorium musi budować się powtarzalnie u rekrutera i w CI. Wersje muszą b
 
 1. Frontend: React 19.3.1, React DOM 19.3.1, Vite 7.3.7, `@vitejs/plugin-react` 5.2.0, TypeScript 6.0.3, Vitest 5.1.0, jsdom 29.0.0.
 2. Wersje frontendu są dokładne (bez `^` i `~`), a `package-lock.json` jest commitowany. Node jest przypięty przez `.nvmrc` = `22` i `engines` = `>=22.13.0 <23`.
-3. Backend: Spring Boot 4.1.2 jako parent, `java.version=17`, Maven wrapper 3.10.0, zależności zarządzane przez BOM Spring Boota.
-4. Testy backendu używają Testcontainers 2.0.5 i obrazu `postgres:16-alpine`; Flyway wykonuje `V1`/`V2` w testowym kontekście.
+3. Backend: Spring Boot 4.1.2 jako parent, `java.version=17`, Maven wrapper 3.10.0, zależności zarządzane przez BOM Spring Boota. BouncyCastle 1.86 jest pinowany jawnie, ponieważ BOM go nie zarządza, a `Argon2PasswordEncoder` go wymaga.
+4. Testy backendu używają Testcontainers 2.0.5 i obrazu `postgres:16-alpine`; Flyway wykonuje `V1`–`V3` w testowym kontekście.
 5. Lint i format: ESLint flat config + Prettier dla frontendu; Spotless (formatter Eclipse) + Maven Enforcer dla backendu. `spotless:check` jest częścią `verify`.
 6. Sekrety: `.env` i pokrewne pliki są ignorowane, w repozytorium jest tylko `.env.example` z placeholderami, a `scripts/check-secrets.sh` skanuje pliki trackowane i untracked.
 7. Podział modułów: backend package-by-feature (`auth`, `crypto`, `message`, `common.*`), frontend `app`/`features`/`shared`.
@@ -398,6 +401,65 @@ Schemat `app_users` i `messages` powstał w ZR-02 jako migracje Flyway. ZR-06 wy
 ### Powiązane wymagania
 
 R04, R06, R10.
+
+---
+
+## ADR-13 — Argon2id i konta demo w profilu local
+
+### Status
+
+**Accepted** — 2026-11-05.
+
+### Kontekst
+
+ZR-07 wymaga kont demonstracyjnych i hashowania haseł, a R02/R06 obejmują logowanie oraz kontrolę dostępu. Wcześniejszy ADR-07 zakładał BCrypt i flagę `APP_DEMO_USERS`. Zadanie wymaga Argon2id oraz seedu wyłącznie w profilu lokalnym, więc sama flaga środowiskowa nie wystarcza: przypadkowe uruchomienie z `APP_DEMO_USERS=true` poza demo nadal tworzyłoby konta. Potrzebny jest mechanizm powiązany z profilem Springa i jawnie opisany w konfiguracji.
+
+### Decyzja
+
+1. Hasła są hashowane **Argon2id** przez bean `PasswordEncoder` w `common/security/PasswordEncoderConfig`.
+2. Parametry są przypięte jawnie: salt 16 B, hash 32 B, parallelism 1, memory 16 384 KiB (16 MiB), iterations 2. Odpowiadają domyślnym parametrom Spring Security (`defaultsForSpringSecurity_v5_8`), ale nie korzystamy z fabryki, żeby aktualizacja biblioteki nie zmieniła kosztu w ciszy.
+3. `org.bouncycastle:bcprov-jdk18on:1.86` jest jawną zależnością, bo `Argon2PasswordEncoder` wymaga BouncyCastle, a BOM Spring Boota nie zarządza tą biblioteką. Wersja jest pinowana w `pom.xml`.
+4. Hash Argon2id dla tych parametrów ma 97 znaków i mieści się w istniejącej kolumnie `password_hash varchar(100)`. Nie zmieniamy typu kolumny; migracja `V3` poprawia wyłącznie jej komentarz z BCrypt na Argon2id.
+5. Login jest normalizowany w jednym miejscu (`UsernameNormalizer`: `trim` + `toLowerCase(Locale.ROOT)`). Baza nadal wymusza `username = lower(btrim(username))` i unikalność.
+6. Dwa konta (`alice`, `bob`) są zdefiniowane w `application-local.properties`; `DemoUserProperties` waliduje obecność i niepustość danych. Hasła demo są jawne i przeznaczone wyłącznie do demonstracji.
+7. `DemoUserSeeder` działa tylko z adnotacją `@Profile("local")`, jest transakcyjny i idempotentny. Istniejących kont nie nadpisuje i nie loguje haseł ani hashy.
+8. Compose ustawia `SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-local}`. Domyślnie stos jest lokalny, ale wdrożenie może wybrać inny profil; poza `local` seeder w ogóle nie powstaje.
+9. `AppUserDetailsService` udostępnia konta Spring Security, normalizuje login, respektuje `enabled` i zwraca zapisany hash. Nie implementujemy jeszcze endpointu logowania ani pełnego `SecurityFilterChain`.
+10. Limit hasła w kontrakcie API rośnie z 1–72 B do 1–128 B; 72 B było ograniczeniem BCrypt, którego Argon2id nie ma. Limit pozostaje walidacją wejścia, a nie właściwością algorytmu.
+11. Testy jednostkowe i integracyjne sprawdzają parametry hasha, dopasowanie poprawnego i błędnego hasła, hashe w bazie, idempotencję oraz brak seedu poza profilem `local`.
+
+### Konsekwencje
+
+**Pozytywne:**
+
+- Hasła w bazie są hashami Argon2id, a nie tekstem jawnym.
+- Koszt hashowania jest jawny i niezależny od przyszłych zmian domyślnych parametrów biblioteki.
+- Seed jest powiązany z profilem, więc przypadkowa flaga środowiskowa nie utworzy kont demo.
+- Idempotencja pozwala bezpiecznie restartować stos bez resetowania haseł.
+- Normalizacja jest spójna w seedzie, `UserDetailsService` i bazie.
+- 97-znakowy hash mieści się w istniejącej kolumnie, więc zmiana algorytmu nie wymaga przebudowy tabeli.
+
+**Negatywne:**
+
+- Argon2id zużywa 16 MiB pamięci na weryfikację hasła; przy wielu równoległych logowaniach rośnie zapotrzebowanie na RAM.
+- BouncyCastle zwiększa rozmiar artefaktu runtime.
+- Hasła demo są jawne w repozytorium; profil `local` jest domyślny w Compose i nie może być używany jako konfiguracja produkcyjna.
+- Brak endpointu logowania oznacza, że konta są gotowe, ale niedostępne jeszcze przez API.
+- Zmiana parametrów Argon2id w przyszłości wymaga świadomej decyzji i ponownego hashowania; `varchar(100)` daje ograniczony zapas.
+
+### Odrzucone alternatywy
+
+- **Pozostawienie BCrypt** — niezgodne z wymaganiem Argon2id i słabsze przy obecnych rekomendacjach.
+- **`APP_DEMO_USERS=true` jako jedyna brama** — łatwo włączyć poza demo; profil Springa jest jednoznaczny.
+- **Seed kont w migracji SQL** — mieszanie danych demo z migracjami, brak profilu, ryzyko plaintextu lub statycznych hashy w SQL.
+- **Hardkodowanie kont w klasie Java** — mniej czytelne niż konfiguracja i trudniejsze do nadpisania.
+- **Edycja `V1__create_app_users.sql`** — zmieniłaby checksum Flyway i zepsuła istniejące bazy; dlatego komentarz poprawia `V3`.
+- **`defaultsForSpringSecurity_v5_8()` bez własnych stałych** — parametry mogłyby zmienić się przy aktualizacji biblioteki.
+- **Limit hasła 72 B** — ograniczenie BCrypt, nie Argon2id; podniesiono do 128 B.
+
+### Powiązane wymagania
+
+R02, R06, R10.
 
 ---
 

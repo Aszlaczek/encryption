@@ -19,7 +19,7 @@ Stan na **2026-11-05**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q03 | E2EE | Brak; szyfrowanie po stronie serwera, backend widzi tekst jawny | Poza MVP | ADR-01, model zagrożeń |
 | Q04 | Rejestracja i reset hasła | Brak; tylko konta demonstracyjne | Poza MVP | ADR-07 |
 | Q05 | Konta demonstracyjne | `alice` / `AliceDemo123!`, `bob` / `BobDemo1234!` | Przyjęte | Testy E2E, README |
-| Q06 | Polityka haseł demo | Minimum 12 znaków, BCrypt strength 12 | Przyjęte | Bezpieczeństwo logowania |
+| Q06 | Polityka haseł demo | Minimum 12 znaków; Argon2id: salt 16 B, hash 32 B, parallelism 1, memory 16 MiB, iterations 2; limit wejścia 1–128 B | Przyjęte | ADR-13, bezpieczeństwo logowania |
 | Q07 | Tytuł wiadomości | Usunięty z modelu; brak kolumn `title`, `content`, `plaintext` | Przyjęte | ADR-08, README |
 | Q08 | Powiązanie pakietu z właścicielem i kluczem | AAD = `v1:<ownerId>:<keyId>` | Przyjęte | Odszyfrowanie tylko przez właściciela |
 | Q09 | Przechowywanie sesji | In-memory, jedna instancja; restart wymaga logowania | Przyjęte | Ograniczenie MVP |
@@ -45,7 +45,7 @@ Stan na **2026-11-05**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q29 | Identyfikatory | UUID v4; domyślnie `gen_random_uuid()` w PostgreSQL | Przyjęte | ADR-08 |
 | Q30 | Tag GCM | Osobna kolumna `bytea`, dokładnie 16 B | Przyjęte | ADR-08 |
 | Q31 | Format koperty | `v1.<key_id>.<base64url(nonce)>.<base64url(ciphertext)>.<base64url(tag)>`; base64url kanoniczny | Przyjęte | README, ADR-08/ADR-09 |
-| Q32 | Migracje | Flyway `V1`/`V2`; seed kont demo w warstwie aplikacji | Przyjęte | R04 |
+| Q32 | Migracje | Flyway `V1`/`V2`/`V3`; seed kont demo w warstwie aplikacji | Przyjęte | ADR-08, ADR-13, R04 |
 | Q33 | Model błędów | RFC 9457 `application/problem+json`, `type=about:blank`, stabilny `code`, polski `detail` | Przyjęte | ADR-09, R02/R06 |
 | Q34 | Pola właściciela | Brak pól właściciela w DTO; nieznane pola JSON odrzucane; właściciel tylko z sesji | Przyjęte | ADR-09, R06 |
 | Q35 | Zasoby obce | Cudza i nieistniejąca wiadomość po `id` → identyczne `404`; cudzy pakiet bez `id` → `422` | Przyjęte | ADR-09, R06 |
@@ -57,6 +57,7 @@ Stan na **2026-11-05**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q41 | Toolchain i sekrety | Node 22.19, React 19.3.1, Vite 7.3.7, TS 6.0.3, Spring Boot 4.1.2 / Java 17, ESLint+Prettier, Spotless+Enforcer, `.env.example` i `check-secrets.sh` | Przyjęte | ADR-10, R01/R03/R10 |
 | Q42 | Topologia Docker | Tylko `3000:80` publiczne; backend i db wewnętrzne; sieci `edge`/`data`; wolumen `pgdata`; klucz demo nadpisywalny z `.env` | Przyjęte | ADR-11, R05 |
 | Q43 | Mapowanie JPA i repozytoria | `created_at` z bazy przez `@Generated`; relacja jednokierunkowa `Message.owner`; repozytoria owner-scoped z kursorem; encje poza API; `ddl-auto=validate` | Przyjęte | ADR-12, R04/R06 |
+| Q44 | Źródło i profil kont demo | `application-local.properties`; seed tylko przy profilu `local`; Compose domyślnie `local`, nadpisywalny przez `SPRING_PROFILES_ACTIVE`; poza `local` brak seedu | Przyjęte | ADR-13, R02/R06 |
 
 ## Zasady rozstrzygania
 

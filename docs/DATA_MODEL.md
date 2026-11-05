@@ -2,10 +2,10 @@
 
 Dokument opisuje model danych MVP, migracje projektowe oraz uzasadnienie zmian względem pierwotnego szkicu `User/Message/UserMessage`.
 
-- **Zadanie:** ZR-02 — model danych i migracje projektowe; ZR-06 — encje JPA, repozytoria i testy schematu.
-- **Data:** 2026-11-04 (model), 2026-11-05 (JPA i testy).
-- **Wymagania:** R04, R06, R09.
-- **Status:** model, migracje i mapowanie JPA zweryfikowane na PostgreSQL 16. Flyway wykonuje `V1`/`V2`, Hibernate startuje z `ddl-auto=validate`, a 7 testów integracyjnych na Testcontainers potwierdza ograniczenia i repozytoria (`cd backend && ./mvnw verify`).
+- **Zadanie:** ZR-02 — model danych i migracje projektowe; ZR-06 — encje JPA, repozytoria i testy schematu; ZR-07 — Argon2id i konta demo.
+- **Data:** 2026-11-04 (model), 2026-11-05 (JPA, testy, Argon2id).
+- **Wymagania:** R02, R04, R06, R09.
+- **Status:** model, migracje, mapowanie JPA i hashowanie zweryfikowane na PostgreSQL 16. Flyway wykonuje `V1`–`V3`, Hibernate startuje z `ddl-auto=validate`, a 17 testów jednostkowych i integracyjnych potwierdza ograniczenia, repozytoria oraz konta demo (`cd backend && ./mvnw verify`).
 - **Kontrakt API:** [`docs/API.md`](API.md) — kanoniczny kontrakt HTTP, DTO, błędów i paginacji.
 
 ## Cele modelu
@@ -54,7 +54,7 @@ erDiagram
 |---|---|---|---|---|
 | `id` | `uuid` | nie | `gen_random_uuid()` | Klucz główny |
 | `username` | `varchar(50)` | nie | — | Znormalizowany login |
-| `password_hash` | `varchar(100)` | nie | — | Wyłącznie hash BCrypt |
+| `password_hash` | `varchar(100)` | nie | — | Hash Argon2id (97 znaków), nigdy hasło jawne |
 | `enabled` | `boolean` | nie | `true` | Czy konto jest aktywne |
 | `created_at` | `timestamptz` | nie | `now()` | Data utworzenia |
 
@@ -197,12 +197,24 @@ Wszystkie operacje na wiadomościach są ograniczone parametrem właściciela. `
 ```text
 backend/src/main/resources/db/migration/
 ├── V1__create_app_users.sql
-└── V2__create_messages.sql
+├── V2__create_messages.sql
+└── V3__update_password_hash_comment.sql
 ```
 
 - `V1` tworzy `app_users` i ograniczenia loginu/hasła.
 - `V2` tworzy `messages`, FK, CHECK-i i indeks.
-- Konta demo nie są seedowane w SQL. Seed aplikacyjny jest idempotentny i zależy od `APP_DEMO_USERS`; hasła generuje `PasswordEncoder` (BCrypt).
+- `V3` zmienia wyłącznie komentarz kolumny `password_hash` z BCrypt na Argon2id; nie zmienia struktury ani danych.
+- Konta demo nie są seedowane w SQL. Seed aplikacyjny jest idempotentny, działa tylko w profilu `local` i korzysta z `application-local.properties`; hasła hashuje `PasswordEncoder` (Argon2id).
+
+## Konta demo i hashowanie
+
+- `PasswordEncoder` to Argon2id z parametrami: salt 16 B, hash 32 B, parallelism 1, memory 16 384 KiB, iterations 2.
+- Parametry odpowiadają domyślnym wartościom Spring Security, ale są przypięte jawnie w `PasswordEncoderConfig`.
+- Hash ma 97 znaków i mieści się w `varchar(100)`.
+- `UsernameNormalizer` wykonuje `trim` i `toLowerCase(Locale.ROOT)`; baza wymusza to samo przez `lower(btrim(username))`.
+- `DemoUserSeeder` (`@Profile("local")`) tworzy `alice` i `bob`, jeśli nie istnieją. Nie nadpisuje istniejących haseł i nie loguje sekretów.
+- `AppUserDetailsService` ładuje konto po znormalizowanym loginie i respektuje `enabled`.
+- Poza profilem `local` seeder nie powstaje; na czystej bazie z profilem `prod` liczba kont demo wynosi 0.
 
 ## Weryfikacja
 
@@ -235,10 +247,10 @@ Wynik:
 
 Struktura tabel została dodatkowo sprawdzona przez `\d+ app_users` i `\d+ messages`.
 
-Testy ZR-06 (`PersistenceIntegrationTests`, Testcontainers PostgreSQL 16, `cd backend && ./mvnw verify`):
+Testy schematu (`PersistenceIntegrationTests`, Testcontainers PostgreSQL 16, `cd backend && ./mvnw verify`):
 
-- pusta baza — Flyway stosuje `V1` i `V2`; istnieją `app_users`, `messages` i `flyway_schema_history`,
-- powtórny start — `flyway.migrate()` wykonuje 0 migracji, `pending` jest puste, `applied` liczy 2 wpisy, a fingerprint kolumn, indeksów i ograniczeń nie zmienia się,
+- pusta baza — Flyway stosuje `V1`, `V2` i `V3`; istnieją `app_users`, `messages` i `flyway_schema_history`,
+- powtórny start — `flyway.migrate()` wykonuje 0 migracji, `pending` jest puste, `applied` liczy 3 wpisy, a fingerprint kolumn, indeksów i ograniczeń nie zmienia się,
 - `ddl-auto=validate` — kontekst startuje bez błędów walidacji mapowania,
 - UNIQUE `username` — duplikat kończy się `23505`,
 - FK `owner_id` — nieistniejący użytkownik kończy się `23503`; `on delete cascade` usuwa wiadomości,
@@ -248,9 +260,22 @@ Testy ZR-06 (`PersistenceIntegrationTests`, Testcontainers PostgreSQL 16, `cd ba
 
 Wynik: `Tests run: 7, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
 
+Testy ZR-07 (10 testów jednostkowych i integracyjnych):
+
+- Argon2id — hash ma prefiks `$argon2id$v=19$m=16384,t=2,p=1$` i 97 znaków; mieści się w `varchar(100)`,
+- dopasowanie — poprawne hasło `matches=true`, błędne `false`, dwa hashe tego samego hasła różnią się solą,
+- normalizacja — `"  ALICE  "` → `alice`, puste dane i `null` obsłużone zgodnie z testem,
+- seed `local` — dokładnie `alice` i `bob`, hashe w bazie, brak jawnych wartości,
+- idempotencja — ponowne uruchomienie seedu nie zmienia liczby kont ani istniejącego hasha,
+- brak seedu poza `local` — 0 kont, brak beana seedera, `UserDetailsService` nie znajduje kont demo.
+
+Wynik łączny: `Tests run: 17, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
+
 ## Ograniczenia i następne kroki
 
-- Flyway jest podłączony po stronie backendu i wykonuje `V1`/`V2` przy starcie oraz w testach Testcontainers.
+- Flyway jest podłączony po stronie backendu i wykonuje `V1`–`V3` przy starcie oraz w testach Testcontainers.
 - Encje i repozytoria nie są jeszcze wykorzystywane przez API; DTO, serwis i endpointy powstaną w kolejnych zadaniach.
-- Seed kont demo pozostaje w warstwie aplikacji, nie w migracji SQL.
+- Seed kont demo pozostaje w warstwie aplikacji, nie w migracji SQL, i działa tylko w profilu `local`.
+- Argon2id zużywa 16 MiB pamięci na weryfikację hasła; przy wielu równoległych logowaniach rośnie zapotrzebowanie na RAM.
+- Limit `varchar(100)` daje ograniczony zapas na przyszłe zmiany parametrów Argon2id; ich podniesienie wymaga nowej migracji.
 - Rotacja kluczy jest poza MVP; `key_id` i `format_version` rezerwują miejsce na przyszłe wersje.

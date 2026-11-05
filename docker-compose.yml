@@ -28,6 +28,8 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
       # Demo-only zero key. A real key can be supplied through .env or the shell.
       APP_CRYPTO_KEY: ${APP_CRYPTO_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+      # The local profile seeds the two public demo accounts. Override to disable them.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
     depends_on:
       db:
