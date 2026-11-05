@@ -10,6 +10,7 @@ Dokument zbiera decyzje przyjęte w ramach zadania rekrutacyjnego. Numeracja jes
 | [ADR-09](#adr-09--kontrakt-api-dto-i-format-pakietu) | Kontrakt API, DTO i format pakietu | Accepted | 2026-11-04 |
 | [ADR-10](#adr-10--wersje-toolchain-i-higiena-sekretów) | Wersje, toolchain i higiena sekretów | Accepted | 2026-11-04 |
 | [ADR-11](#adr-11--topologia-docker-compose) | Topologia Docker Compose | Accepted | 2026-11-05 |
+| [ADR-12](#adr-12--mapowanie-jpa-i-repozytoria) | Mapowanie JPA i repozytoria | Accepted | 2026-11-05 |
 
 ---
 
@@ -342,6 +343,61 @@ R05 wymaga uruchomienia całego stosu jedną komendą, przy trzech kryteriach: p
 ### Powiązane wymagania
 
 R05, R10.
+
+---
+
+## ADR-12 — Mapowanie JPA i repozytoria
+
+### Status
+
+**Accepted** — 2026-11-05.
+
+### Kontekst
+
+Schemat `app_users` i `messages` powstał w ZR-02 jako migracje Flyway. ZR-06 wymaga warstwy JPA, która odwzorowuje ten schemat bez rozjeżdżania się z nim, oraz repozytoriów umożliwiających zapis i odczyt zaszyfrowanych wiadomości. Kontrakt API (`docs/API.md`) mówi, że `createdAt` generuje baza (`now()`), a każdy odczyt jest ograniczony do właściciela z sesji. Encje nie mogą wyciec do API.
+
+### Decyzja
+
+1. Dwie encje w pakietach feature: `auth.AppUser` (`app_users`) i `message.Message` (`messages`). Nie tworzymy wspólnego pakietu `domain` ani encji technicznych.
+2. `id` jest mapowane jako `UUID` z `GenerationType.UUID` (v4). Domyślna wartość `gen_random_uuid()` w migracji pozostaje dla insertów spoza JPA.
+3. `created_at` jest generowane przez bazę: `@Generated(event = EventType.INSERT)` + `insertable = false, updatable = false`. Nie używamy `@CreationTimestamp`, bo timestamp powstawałby w JVM, niezgodnie z kontraktem.
+4. `nonce`, `ciphertext` i `tag` to `byte[]` → `bytea`; `format_version` to `short` → `smallint`; `created_at` to `Instant` → `timestamptz`. Hibernate działa w UTC (`hibernate.jdbc.time_zone=UTC`).
+5. Relacja jest jednokierunkowa: `Message.owner` (`@ManyToOne(fetch = LAZY, optional = false)`). `AppUser` nie ma kolekcji wiadomości, żeby uniknąć N+1 i przypadkowej serializacji historii użytkownika.
+6. Repozytoria są owner-scoped. `AppUserRepository` udostępnia tylko `findByUsername` i `existsByUsername`. `MessageRepository` udostępnia `findByIdAndOwner_Id`, `findByOwner_IdOrderByCreatedAtDescIdDesc`, `findNextPage` oraz `deleteByIdAndOwner_Id`; nie ma metod `findAll` ani wyszukiwania po samym `id`.
+7. Zapytanie kursorowe realizuje warunek `(created_at, id) < (:createdAt, :id)` z sortowaniem `created_at desc, id desc`, zgodnie z `docs/API.md`. Tie-breaker po `id` zapobiega gubieniu i duplikowaniu wierszy o tym samym czasie.
+8. `deleteByIdAndOwner_Id` jest jawnym `@Modifying @Transactional @Query` i zwraca liczbę usuniętych wierszy; dzięki temu usunięcie cudzej wiadomości jest bezpieczne i policzalne.
+9. `spring.jpa.hibernate.ddl-auto=validate`. Hibernate nigdy nie tworzy ani nie zmienia schematu; jedynym źródłem prawdy są migracje Flyway.
+10. Encje nie są zwracane z kontrolerów. W tym zadaniu nie powstają DTO ani endpointy; mapowanie na DTO należy do zadania z warstwą API.
+11. Testy integracyjne używają Testcontainers PostgreSQL 16 i `@ServiceConnection`. Jeden test obejmuje też drugie `flyway.migrate()` i porównanie fingerprintu schematu, żeby wykryć niejawne zmiany.
+
+### Konsekwencje
+
+**Pozytywne:**
+
+- Mapowanie jest weryfikowane przez `ddl-auto=validate` przy każdym starcie kontekstu.
+- `created_at` ma jedną semantykę: czas bazy, wspólny dla JPA i SQL.
+- Brak dwukierunkowej relacji upraszcza model i ogranicza ryzyko wycieku danych.
+- Zapytania owner-scoped są gotowe pod endpointy i trudniej przypadkowo zwrócić cudze dane.
+- Test powtarzalnego startu wykrywa rozjazd migracji i mapowania.
+
+**Negatywne:**
+
+- `@Generated` wymaga, żeby baza faktycznie ustawiała `created_at`; insert z jawną wartością przez JPA nie jest przewidziany.
+- Brak `AppUser.messages` oznacza, że operacje na wiadomościach użytkownika wymagają jawnego repozytorium.
+- `MessageRepository` nie jest jeszcze używany przez serwis; jego API może się zmienić wraz z implementacją endpointów.
+- Testy Testcontainers wymagają Dockera hosta i nie działają w buildzie obrazu.
+
+### Odrzucone alternatywy
+
+- **`@CreationTimestamp`** — timestamp z JVM, niespójny z `now()` i kontraktem API.
+- **`ddl-auto=update`** — niejawne zmiany schematu i brak kontroli nad migracjami.
+- **Relacja dwukierunkowa `AppUser.messages`** — N+1, ryzyko serializacji i większa powierzchnia błędów.
+- **Metody `findAll` i `findById` w repozytorium wiadomości** — zbyt łatwo pominąć filtr właściciela.
+- **Zwracanie encji z API** — ujawnia mapowanie i ułatwia przypadkowy wyciek pól; DTO powstaną osobno.
+
+### Powiązane wymagania
+
+R04, R06, R10.
 
 ---
 

@@ -56,6 +56,7 @@ Stan na **2026-11-05**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q40 | Wersjonowanie API | Brak wersji w URL; zmiany additive, breaking wymaga `/api/v2`; pakiet ma własne `v1` | Przyjęte | ADR-09 |
 | Q41 | Toolchain i sekrety | Node 22.19, React 19.3.1, Vite 7.3.7, TS 6.0.3, Spring Boot 4.1.2 / Java 17, ESLint+Prettier, Spotless+Enforcer, `.env.example` i `check-secrets.sh` | Przyjęte | ADR-10, R01/R03/R10 |
 | Q42 | Topologia Docker | Tylko `3000:80` publiczne; backend i db wewnętrzne; sieci `edge`/`data`; wolumen `pgdata`; klucz demo nadpisywalny z `.env` | Przyjęte | ADR-11, R05 |
+| Q43 | Mapowanie JPA i repozytoria | `created_at` z bazy przez `@Generated`; relacja jednokierunkowa `Message.owner`; repozytoria owner-scoped z kursorem; encje poza API; `ddl-auto=validate` | Przyjęte | ADR-12, R04/R06 |
 
 ## Zasady rozstrzygania
 

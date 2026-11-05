@@ -2,10 +2,10 @@
 
 Dokument opisuje model danych MVP, migracje projektowe oraz uzasadnienie zmian względem pierwotnego szkicu `User/Message/UserMessage`.
 
-- **Zadanie:** ZR-02 — model danych i migracje projektowe.
-- **Data:** 2026-11-04.
+- **Zadanie:** ZR-02 — model danych i migracje projektowe; ZR-06 — encje JPA, repozytoria i testy schematu.
+- **Data:** 2026-11-04 (model), 2026-11-05 (JPA i testy).
 - **Wymagania:** R04, R06, R09.
-- **Status:** model i migracje zweryfikowane na PostgreSQL 16; Flyway i Testcontainers są podłączone, a test kontekstu wykonuje `V1`/`V2` (`cd backend && ./mvnw verify`).
+- **Status:** model, migracje i mapowanie JPA zweryfikowane na PostgreSQL 16. Flyway wykonuje `V1`/`V2`, Hibernate startuje z `ddl-auto=validate`, a 7 testów integracyjnych na Testcontainers potwierdza ograniczenia i repozytoria (`cd backend && ./mvnw verify`).
 - **Kontrakt API:** [`docs/API.md`](API.md) — kanoniczny kontrakt HTTP, DTO, błędów i paginacji.
 
 ## Cele modelu
@@ -164,6 +164,34 @@ Limit 56 000 znaków pakietu wynika z base64url dla 40 000 B ciphertext (ok. 53 
 | `password` | `password_hash` | Brak hasła jawnego w bazie |
 | `title` | usunięte | Brak jakiegokolwiek tekstu jawnego użytkownika w modelu |
 
+## Warstwa JPA
+
+Mapowanie jest weryfikowane przez `spring.jpa.hibernate.ddl-auto=validate`; Hibernate nie tworzy ani nie zmienia schematu.
+
+### Encje
+
+| Encja | Tabela | Pola |
+|---|---|---|
+| `auth.AppUser` | `app_users` | `UUID id`, `String username`, `String passwordHash`, `boolean enabled`, `Instant createdAt` |
+| `message.Message` | `messages` | `UUID id`, `AppUser owner`, `byte[] nonce`, `byte[] ciphertext`, `byte[] tag`, `String keyId`, `short formatVersion`, `String algorithm`, `Instant createdAt` |
+
+- `id` — `GenerationType.UUID` (v4); domyślne `gen_random_uuid()` pozostaje dla insertów SQL.
+- `created_at` — `@Generated(event = EventType.INSERT)` + `insertable = false, updatable = false`; wartość pochodzi z bazy, nie z JVM.
+- `nonce`, `ciphertext`, `tag` — `byte[]` mapowane na `bytea`.
+- `format_version` — `short` mapowany na `smallint`.
+- `created_at` — `Instant` mapowany na `timestamptz`; Hibernate używa UTC.
+- Relacja jest jednokierunkowa: `Message.owner` (`@ManyToOne(fetch = LAZY, optional = false)`); `AppUser` nie ma kolekcji wiadomości.
+- Encje są wewnętrzne dla warstwy trwałości i nie są zwracane z API.
+
+### Repozytoria
+
+| Repozytorium | Metody |
+|---|---|
+| `AppUserRepository` | `findByUsername`, `existsByUsername` |
+| `MessageRepository` | `findByIdAndOwner_Id`, `findByOwner_IdOrderByCreatedAtDescIdDesc`, `findNextPage`, `deleteByIdAndOwner_Id` |
+
+Wszystkie operacje na wiadomościach są ograniczone parametrem właściciela. `findNextPage` realizuje warunek `(created_at, id) < (:createdAt, :id)` z sortowaniem `created_at desc, id desc`, zgodnie z paginacją w [`docs/API.md`](API.md#8-paginacja). `deleteByIdAndOwner_Id` jest jawnym `@Modifying @Transactional @Query` i zwraca liczbę usuniętych wierszy.
+
 ## Migracje
 
 ```text
@@ -207,9 +235,22 @@ Wynik:
 
 Struktura tabel została dodatkowo sprawdzona przez `\d+ app_users` i `\d+ messages`.
 
+Testy ZR-06 (`PersistenceIntegrationTests`, Testcontainers PostgreSQL 16, `cd backend && ./mvnw verify`):
+
+- pusta baza — Flyway stosuje `V1` i `V2`; istnieją `app_users`, `messages` i `flyway_schema_history`,
+- powtórny start — `flyway.migrate()` wykonuje 0 migracji, `pending` jest puste, `applied` liczy 2 wpisy, a fingerprint kolumn, indeksów i ograniczeń nie zmienia się,
+- `ddl-auto=validate` — kontekst startuje bez błędów walidacji mapowania,
+- UNIQUE `username` — duplikat kończy się `23505`,
+- FK `owner_id` — nieistniejący użytkownik kończy się `23503`; `on delete cascade` usuwa wiadomości,
+- długości — `nonce` 11/13 B, `tag` 15/17 B oraz `ciphertext` 0/40 001 B kończą się `23514`; poprawne wartości są przyjmowane,
+- repozytoria — `createdAt` z encji jest zgodne z bazą, odczyt i usunięcie cudzej wiadomości nie zwracają danych,
+- kursor — pierwsza strona, `nextCursor` z ostatniego elementu i druga strona bez duplikatów; tie-breaker po `id`.
+
+Wynik: `Tests run: 7, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
+
 ## Ograniczenia i następne kroki
 
-- Flyway jest podłączony po stronie backendu i wykonuje `V1`/`V2` przy starcie oraz w teście Testcontainers.
-- Test kontekstu używa Testcontainers PostgreSQL 16 i sprawdza obecność obu tabel; pełne testy repozytorium powstaną wraz z implementacją modułu wiadomości.
+- Flyway jest podłączony po stronie backendu i wykonuje `V1`/`V2` przy starcie oraz w testach Testcontainers.
+- Encje i repozytoria nie są jeszcze wykorzystywane przez API; DTO, serwis i endpointy powstaną w kolejnych zadaniach.
 - Seed kont demo pozostaje w warstwie aplikacji, nie w migracji SQL.
 - Rotacja kluczy jest poza MVP; `key_id` i `format_version` rezerwują miejsce na przyszłe wersje.

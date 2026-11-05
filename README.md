@@ -2,7 +2,7 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-05 — cały stos (frontend + nginx, backend, PostgreSQL 16) uruchamia się przez `docker compose up -d --build` i działa w jednym origin `http://localhost:3000`. Endpointy API nie są jeszcze zaimplementowane; testy E2E, CI i implementacja backendu należą do kolejnych zadań.
+> **Status:** ZR-06 — schemat PostgreSQL 16 jest zarządzany przez Flyway (`V1`, `V2`), a encje JPA i repozytoria odwzorowują go z `ddl-auto=validate`. Testy integracyjne na Testcontainers potwierdzają migracje, powtarzalność schematu oraz egzekwowanie UNIQUE, FK i długości nonce. Endpointy API nie są jeszcze zaimplementowane; testy E2E, CI i warstwa serwisowa należą do kolejnych zadań.
 
 **Repozytorium:** <https://github.com/Aszlaczek/encryption>
 
@@ -167,7 +167,7 @@ node scripts/validate-api-contract.mjs
 | R01 | Frontend JavaScript z React/Angular | Szkielet React 19 + Vite 7 + TypeScript 6; `npm run build` oraz 3 testy komponentów (Vitest + RTL); E2E Playwright w kolejnym zadaniu |
 | R02 | Logowanie i walidacja danych | Kontrakt logowania, sesji i CSRF w `docs/API.md`; walidacja przykładów i kodów błędów (`node scripts/validate-api-contract.mjs`); testy integracyjne i E2E w kolejnych zadaniach |
 | R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Spring Boot 4.1.2 / Java 17; `./mvnw verify` z Testcontainers PostgreSQL 16 i Flyway; kontrakt AES-256-GCM w `docs/API.md`; implementacja `CryptoService` w kolejnym zadaniu |
-| R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`/`V2`, ograniczenia CHECK, FK i indeks; walidacja na PostgreSQL 16 (`./scripts/validate-schema.sh`); test kontekstu na Testcontainers; kontrakt CRUD i paginacji w `docs/API.md` |
+| R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`/`V2`, ograniczenia CHECK, FK i indeks; encje `AppUser`/`Message` i repozytoria owner-scoped z zapytaniem kursorowym; 7 testów integracyjnych na Testcontainers PostgreSQL 16 (`./mvnw verify`); walidacja schematu (`./scripts/validate-schema.sh`); kontrakt CRUD i paginacji w `docs/API.md` |
 | R05 | Uruchomienie lokalne w Dockerze | Trzy usługi Compose z healthcheckami; `docker compose down -v` → `docker compose up -d --build` kończy się `healthy`; tylko `3000:80` jest publiczne; backend łączy się z `db:5432`; wolumen `encryption_pgdata` przeżywa restart |
 | R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Macierz statusów, katalog kodów, `404` dla obcych zasobów i limity w `docs/API.md`; walidacja spójności dokumentacji; testy negatywne w kolejnych zadaniach |
 | R07 | Responsywność | Strona główna responsywna od 320 px; zrzuty ekranu Playwright przy 360, 768 i 1280 px w kolejnym zadaniu |
@@ -342,6 +342,7 @@ Konta są tworzone tylko przy `APP_DEMO_USERS=true` (profil lokalny/demo):
 | Warstwa | Narzędzia | Komenda |
 |---|---|---|
 | Backend — jednostkowe i integracyjne | JUnit 5, Testcontainers | `cd backend && ./mvnw verify` |
+| Backend — mapowanie JPA i schemat | JUnit 5, Testcontainers PostgreSQL 16, Flyway | `PersistenceIntegrationTests` — 7 testów (migracje, powtarzalny start, UNIQUE, FK/cascade, długości, repozytoria, kursor) |
 | Backend — format i higiena | Spotless, Enforcer | `cd backend && ./mvnw spotless:check verify` |
 | Schemat bazy i migracje | PostgreSQL 16, psql, Docker | `./scripts/validate-schema.sh` |
 | Kontrakt API i dokumentacja | Node.js, `node:crypto` | `node scripts/validate-api-contract.mjs` |
@@ -352,6 +353,21 @@ Konta są tworzone tylko przy `APP_DEMO_USERS=true` (profil lokalny/demo):
 | Docker — czysty start | Docker Compose, healthchecki | `docker compose down -v && docker compose up -d --build` |
 | Wydajność | `hey`, `EXPLAIN ANALYZE` | opis w `docs/PERFORMANCE.md` |
 | CI | GitHub Actions | workflow w `.github/workflows/ci.yml` (kolejne zadanie) |
+
+Wynik ZR-06 (2026-11-05, JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16):
+
+```text
+Pusta baza            -> Flyway zastosował V1 i V2; tabele app_users, messages, flyway_schema_history
+Powtórny start        -> flyway.migrate() = 0 migracji; pending = 0; applied = 2; fingerprint schematu bez zmian
+ddl-auto              -> validate; Hibernate wystartował bez błędów walidacji mapowania
+UNIQUE username       -> duplikat odrzucony, SQLState 23505
+FK owner_id           -> brak użytkownika odrzucony, SQLState 23503; on delete cascade usuwa wiadomości
+Nonce                 -> 11 B i 13 B odrzucone (23514), 12 B przyjęte; tag 15/17 B i ciphertext 0/40001 B odrzucone
+Repozytoria           -> createdAt z bazy zgodny z encją; odczyt i delete ograniczone do właściciela
+Kursor                -> pierwsza strona, nextCursor z ostatniego elementu, druga strona bez duplikatów
+./mvnw verify         -> Tests run: 7, Failures: 0, Errors: 0, Skipped: 0; BUILD SUCCESS
+Spotless              -> check passed
+```
 
 Wynik ZR-05 (2026-11-05, Docker 29.9.1, Compose v5.6.0, macOS arm64):
 
@@ -417,6 +433,7 @@ Testy negatywne obejmą w szczególności:
 - Domyślne hasło bazy (`change-me`) jest jawnie demonstracyjne; poza demo należy ustawić własne `POSTGRES_PASSWORD`.
 - Backend i baza nie mają portów na hoście; debugowanie odbywa się przez `docker compose exec` lub sieć Compose.
 - Obrazy budują się z `-DskipTests`, ponieważ Testcontainers wymagają Dockera hosta; testy backendu uruchamia się osobno (`./mvnw verify`).
+- Encje JPA i repozytoria są warstwą wewnętrzną; nie są jeszcze używane przez API i nie wolno zwracać ich bezpośrednio z kontrolerów. DTO oraz endpointy powstaną w kolejnych zadaniach.
 - Vite dev server nie proxuje jeszcze `/api`; pełny przepływ w jednym origin zapewnia Compose, a proxy dla trybu dev powstanie wraz z implementacją API.
 - Kontrakt API jest zweryfikowany statycznie; endpointy nie są jeszcze zaimplementowane, więc `curl` i testy kontraktowe wykonamy w kolejnych zadaniach.
 - Frontend jest szkieletem strony głównej; formularze logowania i szyfrowania powstaną w kolejnych zadaniach.
@@ -433,6 +450,7 @@ Testy negatywne obejmą w szczególności:
 - [`ADR-09`](docs/DECISIONS.md#adr-09--kontrakt-api-dto-i-format-pakietu) — kontrakt API, DTO i format pakietu.
 - [`ADR-10`](docs/DECISIONS.md#adr-10--wersje-toolchain-i-higiena-sekretów) — wersje, toolchain i higiena sekretów.
 - [`ADR-11`](docs/DECISIONS.md#adr-11--topologia-docker-compose) — topologia Compose, sieci i porty.
+- [`ADR-12`](docs/DECISIONS.md#adr-12--mapowanie-jpa-i-repozytoria) — mapowanie JPA, `created_at` z bazy, repozytoria owner-scoped.
 
 Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`](docs/DECISIONS.md). Szczegóły schematu: [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md). Kontrakt HTTP: [`docs/API.md`](docs/API.md).
 
@@ -456,16 +474,16 @@ Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`]
 │   └── src/
 │       ├── main/java/com/szlaczek/backend/
 │       │   ├── BackendApplication.java
-│       │   ├── auth/         # logowanie, sesja, CSRF
+│       │   ├── auth/         # AppUser, AppUserRepository; logowanie, sesja, CSRF
 │       │   ├── crypto/       # AES-256-GCM, format pakietu
-│       │   ├── message/      # wiadomości i paginacja
+│       │   ├── message/      # Message, MessageRepository; paginacja kursorowa
 │       │   └── common/
 │       │       ├── security/ # konfiguracja bezpieczeństwa
 │       │       └── web/      # błędy RFC 9457, nagłówki
 │       ├── main/resources/
 │       │   ├── application.properties
 │       │   └── db/migration/{V1__create_app_users.sql, V2__create_messages.sql}
-│       └── test/java/com/szlaczek/backend/BackendApplicationTests.java
+│       └── test/java/com/szlaczek/backend/PersistenceIntegrationTests.java
 ├── frontend/
 │   ├── Dockerfile            # Node build -> nginx
 │   ├── nginx.conf            # SPA, proxy /api, problem+json 413
