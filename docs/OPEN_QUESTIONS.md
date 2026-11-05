@@ -1,6 +1,6 @@
 # Otwarte kwestie
 
-Stan na **2026-11-04**. Dokument uzupełnia README i ADR-y; każda kwestia ma jawnie wskazany status, żeby nie pozostawiać niejawnych założeń dotyczących dostępu i bezpieczeństwa.
+Stan na **2026-11-05**. Dokument uzupełnia README i ADR-y; każda kwestia ma jawnie wskazany status, żeby nie pozostawiać niejawnych założeń dotyczących dostępu i bezpieczeństwa.
 
 ## Legenda
 
@@ -33,7 +33,7 @@ Stan na **2026-11-04**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q17 | Kopie zapasowe i retencja | Brak; dane w wolumenie, `down -v` usuwa | Poza MVP | Środowisko demo |
 | Q18 | Role i administrator | Brak ról i panelu administracyjnego | Poza MVP | Kontrola dostępu |
 | Q19 | Paginacja | Kursorowa, tylko następna strona; domyślnie 10, maksymalnie 50; indeks `(owner_id, created_at desc, id desc)` | Przyjęte | R09, ADR-09 |
-| Q20 | Porty lokalne | Frontend `3000`, backend `8080`, konfigurowalne przez `.env` | Przyjęte | Uruchomienie R05 |
+| Q20 | Porty lokalne | Frontend `3000` publiczny w Compose; backend `8080` i db `5432` tylko w sieci Compose; poza Compose backend działa na `8080` | Przyjęte | Uruchomienie R05 |
 | Q21 | Dokumentacja API | `docs/API.md` jako kanoniczny kontrakt; OpenAPI/springdoc odłożone, ewentualne użycie musi być zgodne z API.md | Przyjęte | R10, ADR-09 |
 | Q22 | Wersja Spring Boot | 4.1.2; fallback na 3.5.x tylko przy blokującej niekompatybilności bibliotek | Przyjęte | Wymaga odnotowania w ADR |
 | Q23 | Wspierane przeglądarki | Ostatnie dwie wersje Chrome, Firefox, Safari i Edge | Przyjęte | R07/R08 |
@@ -55,6 +55,7 @@ Stan na **2026-11-04**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q39 | Cache i korelacja | `Cache-Control: no-store` na `/api/**`; `X-Request-Id` i `traceId` w błędach | Przyjęte | ADR-09, R06/R10 |
 | Q40 | Wersjonowanie API | Brak wersji w URL; zmiany additive, breaking wymaga `/api/v2`; pakiet ma własne `v1` | Przyjęte | ADR-09 |
 | Q41 | Toolchain i sekrety | Node 22.19, React 19.3.1, Vite 7.3.7, TS 6.0.3, Spring Boot 4.1.2 / Java 17, ESLint+Prettier, Spotless+Enforcer, `.env.example` i `check-secrets.sh` | Przyjęte | ADR-10, R01/R03/R10 |
+| Q42 | Topologia Docker | Tylko `3000:80` publiczne; backend i db wewnętrzne; sieci `edge`/`data`; wolumen `pgdata`; klucz demo nadpisywalny z `.env` | Przyjęte | ADR-11, R05 |
 
 ## Zasady rozstrzygania
 

@@ -2,7 +2,7 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-04 — repozytorium oraz szkielety frontendu (React + Vite + TypeScript) i backendu (Spring Boot 4.1.2) budują się lokalnie. Toolchain, lint, formatter i higiena sekretów działają. Endpointy nie są jeszcze zaimplementowane; Docker Compose i testy E2E należą do kolejnych zadań.
+> **Status:** ZR-05 — cały stos (frontend + nginx, backend, PostgreSQL 16) uruchamia się przez `docker compose up -d --build` i działa w jednym origin `http://localhost:3000`. Endpointy API nie są jeszcze zaimplementowane; testy E2E, CI i implementacja backendu należą do kolejnych zadań.
 
 **Repozytorium:** <https://github.com/Aszlaczek/encryption>
 
@@ -168,7 +168,7 @@ node scripts/validate-api-contract.mjs
 | R02 | Logowanie i walidacja danych | Kontrakt logowania, sesji i CSRF w `docs/API.md`; walidacja przykładów i kodów błędów (`node scripts/validate-api-contract.mjs`); testy integracyjne i E2E w kolejnych zadaniach |
 | R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Spring Boot 4.1.2 / Java 17; `./mvnw verify` z Testcontainers PostgreSQL 16 i Flyway; kontrakt AES-256-GCM w `docs/API.md`; implementacja `CryptoService` w kolejnym zadaniu |
 | R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`/`V2`, ograniczenia CHECK, FK i indeks; walidacja na PostgreSQL 16 (`./scripts/validate-schema.sh`); test kontekstu na Testcontainers; kontrakt CRUD i paginacji w `docs/API.md` |
-| R05 | Uruchomienie lokalne w Dockerze | Czysty start `docker compose down -v` → `docker compose up -d --build`; healthchecki; instrukcja w README (zadanie Docker Compose) |
+| R05 | Uruchomienie lokalne w Dockerze | Trzy usługi Compose z healthcheckami; `docker compose down -v` → `docker compose up -d --build` kończy się `healthy`; tylko `3000:80` jest publiczne; backend łączy się z `db:5432`; wolumen `encryption_pgdata` przeżywa restart |
 | R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Macierz statusów, katalog kodów, `404` dla obcych zasobów i limity w `docs/API.md`; walidacja spójności dokumentacji; testy negatywne w kolejnych zadaniach |
 | R07 | Responsywność | Strona główna responsywna od 320 px; zrzuty ekranu Playwright przy 360, 768 i 1280 px w kolejnym zadaniu |
 | R08 | Dostępność | Semantyczne nagłówki, landmarki, skip link i widoczny focus; skan axe w kolejnym zadaniu |
@@ -208,16 +208,21 @@ Wersje są przypięte dokładnie: `package.json` bez zakresów `^`/`~`, `package
 | JDK lokalny | 27.0.1 | Spring Boot 4.1.2 wspiera Javę 17–27 |
 | Spring Boot | 4.1.2 | parent w `backend/pom.xml` |
 | Maven | 3.10.0 | wrapper `backend/mvnw` |
-| PostgreSQL | 16 | obraz `postgres:16-alpine` w testach |
+| PostgreSQL | 16 | obrazy `postgres:16-alpine` w testach i Compose |
 | Testcontainers | 2.0.5 | wersja z BOM Spring Boota |
 | Spotless / Enforcer | 3.11.0 / 3.7.0 | formatter i walidacja środowiska |
+| Obraz build backendu | `maven:3.10.0-eclipse-temurin-17` | wieloetapowy build, multi-arch |
+| Obraz runtime backendu | `eclipse-temurin:17-jre` | Ubuntu, multi-arch; alpine jest tylko `amd64` |
+| Obraz build frontendu | `node:22.19-alpine` | `npm ci` + `vite build`, multi-arch |
+| Obraz runtime frontendu | `nginx:1.29-alpine` | statyczne `dist/`, proxy `/api`, multi-arch |
 
 Dlaczego takie wersje:
 
 - **Vite 7 + `@vitejs/plugin-react` 5.2** — plugin-react 6 wymaga Vite 8; wybrano stabilną parę 7.x/5.x.
 - **TypeScript 6.0.3** — `typescript-eslint` 8.72 wspiera TypeScript `<6.1.0`, więc TypeScript 7 nie jest jeszcze objęty wsparciem.
 - **jsdom 29** — jsdom 30 wymaga Node `^22.22.2`, a środowisko projektu to Node 22.19.0.
-- **Java 17 target przy JDK 27** — Spring Boot 4.1.2 oficjalnie wspiera Javę 17–27; obraz Docker z JDK 17 powstanie w zadaniu R05.
+- **Java 17 target przy JDK 27** — Spring Boot 4.1.2 oficjalnie wspiera Javę 17–27; obrazy Dockera budują i uruchamiają aplikację na Javie 17.
+- **Runtime `eclipse-temurin:17-jre` zamiast alpine** — tag `17-jre-alpine` jest publikowany tylko dla `linux/amd64`, a host deweloperski to `arm64`; wersja `17-jre` jest multi-arch.
 
 ## Uruchomienie lokalne
 
@@ -269,7 +274,7 @@ Sekrety:
 
 ## Uruchomienie w Dockerze
 
-> Komendy docelowe. Zostaną zweryfikowane w zadaniu dotyczącym R05; do tego czasu implementacja nie jest ukończona.
+Wymagany jest Docker z Compose. Cały stos opisuje `docker-compose.yml`.
 
 Pierwszy start lub przebudowa obrazów:
 
@@ -283,21 +288,40 @@ Kolejne starty bez przebudowy:
 docker compose up -d
 ```
 
+Adresy i dostęp:
+
+- aplikacja: `http://localhost:3000` — **jedyny port publiczny**,
+- health: `http://localhost:3000/actuator/health`,
+- backend (`8080/tcp`) i baza (`5432/tcp`) nie są publikowane na hoście; są osiągalne tylko z sieci Compose.
+
+Topologia:
+
+- `frontend` — nginx serwuje zbudowany SPA i proxuje `/api/` oraz `/actuator/health` do `backend:8080`, dzięki czemu przeglądarka używa jednego origin,
+- `backend` — Spring Boot łączy się z bazą po nazwie serwisu `db:5432`,
+- `db` — PostgreSQL 16 z wolumenem `encryption_pgdata`,
+- sieć `edge`: frontend + backend; sieć `data` (`internal: true`): backend + db,
+- healthchecki i `depends_on: service_healthy` pilnują kolejności startu.
+
+Konfiguracja:
+
+```bash
+cp .env.example .env   # opcjonalnie; bez .env działają wartości demo
+```
+
+- `APP_CRYPTO_KEY` ustawiony w `.env` lub środowisku nadpisuje klucz demo. Bez niego Compose używa stałego **zerowego klucza demo** (wyłącznie do demonstracji).
+- Zmiana klucza po zapisaniu wiadomości uniemożliwi ich odszyfrowanie; rotacja kluczy jest poza MVP.
+- `POSTGRES_*` mają domyślnie `change-me`; to również wartości wyłącznie demonstracyjne.
+- Bezpośredni dostęp do bazy: `docker compose exec db psql -U encryption -d encryption` (bez publikowania portu).
+
 Przydatne komendy:
 
 ```bash
+docker compose ps
+docker compose config
 docker compose logs -f
 docker compose down
 docker compose down -v   # usuwa również wolumen bazy danych
 ```
-
-Planowane adresy:
-
-- frontend: `http://localhost:3000`,
-- backend: `http://localhost:8080`,
-- healthcheck backendu: `http://localhost:8080/actuator/health`.
-
-Konfiguracja przez `.env` (na podstawie `.env.example`). Wartości domyślne w Compose pozwolą uruchomić projekt bez dodatkowej konfiguracji, ale klucz szyfrujący i hasła domyślne są przeznaczone **wyłącznie do środowiska demo**.
 
 ## Konta demonstracyjne
 
@@ -325,9 +349,31 @@ Konta są tworzone tylko przy `APP_DEMO_USERS=true` (profil lokalny/demo):
 | Frontend — lint i format | ESLint, Prettier | `cd frontend && npm run lint && npm run format:check` |
 | Sekrety | `git grep`, `.gitignore` | `./scripts/check-secrets.sh` |
 | E2E i dostępność | Playwright, axe | `cd frontend && npx playwright test` (kolejne zadanie) |
-| Docker — czysty start | Docker Compose, healthchecki | `docker compose down -v && docker compose up -d --build` (zadanie R05) |
+| Docker — czysty start | Docker Compose, healthchecki | `docker compose down -v && docker compose up -d --build` |
 | Wydajność | `hey`, `EXPLAIN ANALYZE` | opis w `docs/PERFORMANCE.md` |
 | CI | GitHub Actions | workflow w `.github/workflows/ci.yml` (kolejne zadanie) |
+
+Wynik ZR-05 (2026-11-05, Docker 29.9.1, Compose v5.6.0, macOS arm64):
+
+```text
+docker compose config                       -> OK
+docker compose down -v --remove-orphans     -> usunięte
+docker compose up -d --build                -> 3 obrazy zbudowane, 3 kontenery healthy
+docker compose port db 5432                 -> :0 (brak publikacji)
+docker compose port backend 8080            -> :0 (brak publikacji)
+curl localhost:3000/                        -> HTTP 200, <html lang="pl">
+curl localhost:3000/actuator/health         -> HTTP 200 {"status":"UP"}
+curl localhost:3000/api/messages            -> HTTP 401 (Spring Security; log nginx: 401)
+docker compose exec backend printenv DB_URL -> jdbc:postgresql://db:5432/encryption
+getent hosts db                             -> 172.21.0.2 db
+psql \dt                                    -> app_users, messages, flyway_schema_history
+restart bez -v                              -> wiersz testowy i 2 migracje nadal w bazie
+drugi docker compose up -d                  -> OK
+413 przez nginx                             -> application/problem+json, PAYLOAD_TOO_LARGE
+klucz z .env                                -> nadpisany; po usunięciu .env wrócił demo
+```
+
+`/api/messages` zwraca `401`, bo endpointy nie są jeszcze zaimplementowane — to odpowiedź Spring Security, a nie nginx, co potwierdza log accessu (`401` po proxowaniu).
 
 Wynik ZR-04 (2026-11-04, Node.js 22.19.0, npm 11.16.0, JDK 27.0.1, Maven 3.10.0, Docker 29.9.1):
 
@@ -367,11 +413,14 @@ Testy negatywne obejmą w szczególności:
 - Brak kopii zapasowych i polityki retencji danych.
 - Lokalnie brak TLS; produkcja wymaga terminatora TLS i cookie `Secure`.
 - Brak tytułu wiadomości; lista identyfikuje wpisy datą i UUID. Dzięki temu w bazie nie ma tekstu jawnego użytkownika.
-- Domyślny klucz szyfrujący w Compose służy tylko do demo.
+- Domyślny klucz szyfrujący w Compose jest zerowy i służy tylko do demo; można go nadpisać przez `APP_CRYPTO_KEY`. Zmiana klucza po zapisaniu wiadomości uniemożliwi ich odszyfrowanie.
+- Domyślne hasło bazy (`change-me`) jest jawnie demonstracyjne; poza demo należy ustawić własne `POSTGRES_PASSWORD`.
+- Backend i baza nie mają portów na hoście; debugowanie odbywa się przez `docker compose exec` lub sieć Compose.
+- Obrazy budują się z `-DskipTests`, ponieważ Testcontainers wymagają Dockera hosta; testy backendu uruchamia się osobno (`./mvnw verify`).
+- Vite dev server nie proxuje jeszcze `/api`; pełny przepływ w jednym origin zapewnia Compose, a proxy dla trybu dev powstanie wraz z implementacją API.
 - Kontrakt API jest zweryfikowany statycznie; endpointy nie są jeszcze zaimplementowane, więc `curl` i testy kontraktowe wykonamy w kolejnych zadaniach.
 - Frontend jest szkieletem strony głównej; formularze logowania i szyfrowania powstaną w kolejnych zadaniach.
 - Backend nie ma jeszcze konfiguracji Spring Security zgodnej z `docs/API.md`; domyślne zabezpieczenia Springa blokują endpointy do czasu implementacji.
-- Docker Compose całego stosu jeszcze nie istnieje; dostępny jest pojedynczy kontener PostgreSQL do testów i pracy lokalnej.
 - Skrypt `check-secrets.sh` jest heurystyczny i nie zastępuje skanera historii Git.
 - OpenAPI/springdoc jest odłożone; kanonicznym dokumentem pozostaje `docs/API.md`.
 - Pełna lista otwartych kwestii i przyjętych wartości znajduje się w [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md).
@@ -383,6 +432,7 @@ Testy negatywne obejmą w szczególności:
 - [`ADR-08`](docs/DECISIONS.md#adr-08--model-danych-i-migracje) — UUID, relacja 1:N, brak `user_messages`.
 - [`ADR-09`](docs/DECISIONS.md#adr-09--kontrakt-api-dto-i-format-pakietu) — kontrakt API, DTO i format pakietu.
 - [`ADR-10`](docs/DECISIONS.md#adr-10--wersje-toolchain-i-higiena-sekretów) — wersje, toolchain i higiena sekretów.
+- [`ADR-11`](docs/DECISIONS.md#adr-11--topologia-docker-compose) — topologia Compose, sieci i porty.
 
 Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`](docs/DECISIONS.md). Szczegóły schematu: [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md). Kontrakt HTTP: [`docs/API.md`](docs/API.md).
 
@@ -398,6 +448,8 @@ Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`]
 │   ├── DECISIONS.md
 │   └── OPEN_QUESTIONS.md
 ├── backend/
+│   ├── Dockerfile            # wieloetapowy build Maven -> JRE 17
+│   ├── .dockerignore
 │   ├── pom.xml               # Spring Boot 4.1.2, Java 17, zależności i pluginy
 │   ├── eclipse-formatter.xml # konfiguracja Spotless
 │   ├── mvnw / mvnw.cmd
@@ -415,6 +467,9 @@ Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`]
 │       │   └── db/migration/{V1__create_app_users.sql, V2__create_messages.sql}
 │       └── test/java/com/szlaczek/backend/BackendApplicationTests.java
 ├── frontend/
+│   ├── Dockerfile            # Node build -> nginx
+│   ├── nginx.conf            # SPA, proxy /api, problem+json 413
+│   ├── .dockerignore
 │   ├── package.json / package-lock.json
 │   ├── eslint.config.js / .prettierrc.json
 │   ├── src/
@@ -429,6 +484,6 @@ Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`]
 │   ├── validate-api-contract.mjs
 │   ├── validate-schema.sh
 │   └── validate-schema.sql
-├── docker-compose.yml        # planowany (R05)
+├── docker-compose.yml        # frontend, backend, db, sieci, wolumen
 └── .github/workflows/ci.yml  # planowany (CI)
 ```

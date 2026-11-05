@@ -9,6 +9,7 @@ Dokument zbiera decyzje przyjęte w ramach zadania rekrutacyjnego. Numeracja jes
 | [ADR-08](#adr-08--model-danych-i-migracje) | Model danych i migracje | Accepted | 2026-11-04 |
 | [ADR-09](#adr-09--kontrakt-api-dto-i-format-pakietu) | Kontrakt API, DTO i format pakietu | Accepted | 2026-11-04 |
 | [ADR-10](#adr-10--wersje-toolchain-i-higiena-sekretów) | Wersje, toolchain i higiena sekretów | Accepted | 2026-11-04 |
+| [ADR-11](#adr-11--topologia-docker-compose) | Topologia Docker Compose | Accepted | 2026-11-05 |
 
 ---
 
@@ -278,6 +279,69 @@ Repozytorium musi budować się powtarzalnie u rekrutera i w CI. Wersje muszą b
 ### Powiązane wymagania
 
 R01, R03, R10.
+
+---
+
+## ADR-11 — Topologia Docker Compose
+
+### Status
+
+**Accepted** — 2026-11-05.
+
+### Kontekst
+
+R05 wymaga uruchomienia całego stosu jedną komendą, przy trzech kryteriach: przeglądarka korzysta z jednego origin, backend łączy się z bazą po nazwie serwisu, a baza nie ma publicznego portu w domyślnej konfiguracji. Host deweloperski to macOS `arm64`, więc obrazy muszą być dostępne także dla tej architektury. Endpointy API nie są jeszcze zaimplementowane, więc weryfikacja dotyczy topologii, a nie logiki biznesowej.
+
+### Decyzja
+
+1. Trzy usługi: `db` (PostgreSQL 16), `backend` (Spring Boot) i `frontend` (nginx).
+2. Publiczny jest wyłącznie `frontend`: `3000:80`. `backend` ma `expose: 8080`, a `db` nie ma żadnego portu.
+3. Dwie sieci: `edge` (frontend + backend) oraz `data` (`internal: true`, backend + db). Baza nie jest osiągalna z frontendu.
+4. Dane trwałe: nazwany wolumen `pgdata`; projekt Compose nazywa się `encryption`.
+5. Obrazy wieloetapowe: `maven:3.10.0-eclipse-temurin-17` → `eclipse-temurin:17-jre` (użytkownik nie-root) oraz `node:22.19-alpine` → `nginx:1.29-alpine`. Runtime zawiera tylko jar albo `dist/`.
+6. Healthchecki (`pg_isready`, `curl /actuator/health`, `wget /`), `depends_on: service_healthy` i `restart: unless-stopped`.
+7. nginx serwuje SPA z fallbackiem, proxuje `/api/` i `/actuator/health` do `backend:8080`, przekazuje `Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto` i ustawia `client_max_body_size 128k`.
+8. Przekroczenie limitu nginx zwraca jako `application/problem+json` z `code: PAYLOAD_TOO_LARGE`, a nie jako HTML.
+9. `APP_CRYPTO_KEY` pochodzi z `.env` lub środowiska; gdy go brak, Compose używa stałego zerowego klucza demo. Klucz demo jest jawny i przeznaczony wyłącznie do demonstracji.
+10. `POSTGRES_*` mają domyślne wartości demo (`change-me`), więc start nie wymaga `.env`.
+11. Testy nie są uruchamiane w obrazie (`-DskipTests`), bo Testcontainers wymagają Dockera hosta; pozostają osobną kontrolą.
+12. TLS, CI i implementacja endpointów są poza zakresem tego zadania.
+
+### Konsekwencje
+
+**Pozytywne:**
+
+- Przeglądarka i API mają jedno origin, więc CORS nie jest potrzebny.
+- Baza i backend nie zwiększają publicznej powierzchni ataku.
+- Sieć `data` izoluje bazę od frontendu.
+- Wolumen przeżywa `docker compose down`, co potwierdzono testem trwałości.
+- Obrazy są powtarzalne, multi-arch i zawierają tylko artefakty runtime.
+- Healthchecki dają jednoznaczny sygnał gotowości i kolejność startu.
+- Błędy 413 zachowują kontrakt problem+json.
+
+**Negatywne:**
+
+- Domyślne hasła i klucz są demonstracyjne; wymagają świadomej konfiguracji poza demo.
+- Debugowanie backendu wymaga `docker compose exec` albo sieci Compose.
+- Brak TLS i cookie `Secure` w lokalnym Compose.
+- Zmiana `APP_CRYPTO_KEY` po zapisaniu wiadomości uniemożliwia ich odszyfrowanie.
+- Obraz backendu jest większy niż wariant alpine, ponieważ `eclipse-temurin:17-jre` jest oparty o Ubuntu.
+- Build obrazu nie uruchamia testów, więc zielony build nie zastępuje `./mvnw verify`.
+
+### Odrzucone alternatywy
+
+- **Publikacja backendu na `8080`** — dodatkowa publiczna ścieżka i dwa origin; utrudnia debugowanie tylko pozornie.
+- **Publikacja PostgreSQL na `5432`** — narusza kryterium braku publicznego portu bazy.
+- **Jedna sieć dla wszystkich usług** — frontend mógłby łączyć się z bazą; brak izolacji.
+- **`eclipse-temurin:17-jre-alpine`** — obraz jest publikowany tylko dla `linux/amd64`; na hoście `arm64` wymagałby emulacji.
+- **Uruchamianie testów w buildzie obrazu** — Testcontainers potrzebują Dockera hosta; build stałby się wolny i zależny od środowiska.
+- **Wymagany klucz w `.env`** — `docker compose up -d` bez konfiguracji kończyłby się błędem, wbrew kryterium uruchomienia.
+- **Losowy klucz generowany przy starcie** — po restarcie stare wiadomości byłyby nieczytelne.
+- **TLS w Compose** — generowałby samopodpisane certyfikaty i szum; produkcja wymaga zewnętrznego terminatora TLS.
+
+### Powiązane wymagania
+
+R05, R10.
 
 ---
 
