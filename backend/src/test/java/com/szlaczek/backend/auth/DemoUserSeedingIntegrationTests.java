@@ -57,6 +57,8 @@ class DemoUserSeedingIntegrationTests {
     void matchesCorrectPasswordsAndRejectsWrongOnes() {
         UserDetails alice = userDetailsService.loadUserByUsername("  ALICE  ");
 
+        assertThat(alice).isInstanceOf(AppUserPrincipal.class);
+        assertThat(((AppUserPrincipal) alice).getId()).isNotNull();
         assertThat(alice.getUsername()).isEqualTo("alice");
         assertThat(alice.isEnabled()).isTrue();
         assertThat(passwordEncoder.matches("AliceDemo123!", alice.getPassword())).isTrue();

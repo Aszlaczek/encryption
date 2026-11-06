@@ -463,6 +463,83 @@ R02, R06, R10.
 
 ---
 
+## ADR-14 — Logowanie, sesja i CSRF
+
+### Status
+
+**Accepted** — 2026-11-06.
+
+### Kontekst
+
+ZR-08 implementuje sekcję 4 i 6 kontraktu: `GET /api/auth/csrf`, `POST /api/auth/login`, `GET /api/auth/me` i `POST /api/auth/logout`. Domyślna konfiguracja Spring Security nie wystarcza:
+
+- form login przekierowuje i nie zwraca JSON, a kontrakt wymaga `application/problem+json`,
+- domyślna kolejność filtrów zwraca `403` przed `401` dla anonimowych mutacji, podczas gdy kontrakt wymaga `401` przed `403`,
+- logowanie musi zawsze wymagać CSRF, także bez sesji,
+- po logowaniu trzeba obrócić identyfikator sesji i token CSRF,
+- błędy logowania nie mogą ujawniać istnienia konta,
+- limit 5 nieudanych prób na 60 s wymaga własnego mechanizmu.
+
+Jednocześnie sesje i limity są przechowywane w pamięci, bo MVP działa jako jedna instancja.
+
+### Decyzja
+
+1. `SecurityConfig` tworzy jeden `SecurityFilterChain` dla `/api/**` i `/actuator/health`. Form login, HTTP Basic i domyślny logout są wyłączone. Polityka sesji to `IF_REQUIRED`, a kontekst bezpieczeństwa jest zapisywany jawnie przez `HttpSessionSecurityContextRepository` z `requireExplicitSave(true)`.
+2. Logowanie jest ręcznym kontrolerem JSON (`AuthController.login`) korzystającym z `AuthenticationManager` i `DaoAuthenticationProvider`. `AppUserDetailsService` zwraca `AppUserPrincipal` z `UUID id`, dzięki czemu `/me` i odpowiedź logowania nie potrzebują dodatkowego zapytania do bazy.
+3. Po udanym logowaniu `AuthService`:
+   - wywołuje `request.changeSessionId()`, jeśli sesja już istnieje (ochrona przed session fixation),
+   - tworzy nowy `SecurityContext` i zapisuje go przez `SecurityContextRepository`,
+   - generuje nowy token CSRF i zapisuje go przez `CookieCsrfTokenRepository`,
+   - zwraca `UserResponse` bez encji i bez hasha.
+4. CSRF używa cookie `XSRF-TOKEN` (`Path=/`, `SameSite=Lax`, bez `HttpOnly`, `Secure` zależne od `SESSION_COOKIE_SECURE`) i nagłówka `X-XSRF-TOKEN`. Używamy zwykłego `CsrfTokenRequestAttributeHandler`, a nie `csrf.spa()`, żeby wartość w ciele odpowiedzi była równa wartości cookie i nie powstawały zdublowane cookie. Token jest zapisywany także wtedy, gdy `GET /api/auth/csrf` rozwiąże token odroczony.
+5. `ApiCsrfRequestMatcher` realizuje kolejność z kontraktu: metody bezpieczne nie wymagają CSRF; `POST /api/auth/login` wymaga CSRF zawsze; mutacje z uwierzytelnionym principalem wymagają CSRF; mutacje anonimowe są przepuszczane do autoryzacji, żeby odpowiedź brzmiała `401`, a nie `403`.
+6. `ApiAuthenticationEntryPoint` zwraca `401 UNAUTHENTICATED`, a `ApiAccessDeniedHandler` zwraca `403 CSRF_INVALID` dla `CsrfException` i `403 ACCESS_DENIED` dla pozostałych odmów. Oba używają wspólnego formatu RFC 9457.
+7. `LoginRateLimiter` jest komponentem in-memory: maksymalnie 5 nieudanych prób w oknie 60 s dla pary IP + znormalizowany login. Szósta próba daje `429 RATE_LIMITED` i `Retry-After`; udane logowanie zeruje licznik. `Clock` jest wstrzykiwany, a liczba kluczy jest ograniczona (LRU), żeby mapa nie rosła bez końca.
+8. IP klienta pochodzi z `X-Real-IP` ustawianego przez nginx; poza Compose używany jest `request.getRemoteAddr()`. Nie ufamy dowolnemu `X-Forwarded-For` od klienta.
+9. `DaoAuthenticationProvider` ma `hideUserNotFoundExceptions=true` i `alwaysPerformAdditionalChecksOnUser=true`. Błędne hasło, nieistniejący login i konto wyłączone dają identyczne `401 INVALID_CREDENTIALS`; hasła i hashe nie trafiają do logów.
+10. Cookie sesji: `JSESSIONID`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` przez `SESSION_COOKIE_SECURE` (domyślnie `false` lokalnie). Sesja wygasa po 30 minutach, działa wyłącznie na cookie. Logout unieważnia tylko bieżącą sesję i czyści oba cookie (`Max-Age=0`).
+11. `ApiRequestHeadersFilter` działa przed Spring Security: generuje serwerowy `X-Request-Id`, ustawia `Cache-Control: no-store` i `X-Content-Type-Options: nosniff` dla `/api/**`, odrzuca ciało większe niż 65 536 B (`413`) oraz żądania mutujące bez `application/json` w UTF-8 (`415`, z wyjątkiem `POST /api/auth/logout`, który nie ma ciała).
+12. Jackson 3 odrzuca nieznane pola (`FAIL_ON_UNKNOWN_PROPERTIES`) i duplikaty kluczy (`STRICT_DUPLICATE_DETECTION`). Encje nigdy nie są zwracane z API.
+13. Zmiana nie wymaga migracji bazy; schemat `V1`–`V3` pozostaje bez zmian.
+
+### Konsekwencje
+
+**Pozytywne:**
+
+- Kontrakt auth jest zaimplementowany i sprawdzony przez 41 testów backendu oraz rzeczywiste żądania przez nginx.
+- `401` ma pierwszeństwo przed `403`, a logowanie zawsze wymaga CSRF.
+- Rotacja sesji i tokenu ogranicza skutki przejęcia identyfikatora.
+- Błędy logowania nie ujawniają istnienia konta ani stanu `enabled`.
+- Limit prób chroni przed prostym brute force bez blokowania innych kont na tym samym IP.
+- Odpowiedzi błędów są jednolite i skorelowane z `X-Request-Id`.
+
+**Negatywne:**
+
+- Sesje i limiter są lokalne dla instancji; restart wymaga logowania, a wiele replik wymagałoby Redis lub sticky sessions.
+- `X-Real-IP` jest zaufane tylko dlatego, że backend nie jest publikowany, a nginx nadpisuje nagłówek. Bez proxy trzeba zmienić resolver.
+- Ręczne logowanie wymaga utrzymywania rotacji sesji i CSRF w `AuthService`; form login robiłby część z tego automatycznie.
+- Cookie `XSRF-TOKEN` jest czytelne dla JavaScriptu z założenia; bezpieczeństwo opiera się na `SameSite` i nagłówku, nie na `HttpOnly`.
+- `Secure` jest wyłączone lokalnie; wdrożenie bez TLS lub bez `SESSION_COOKIE_SECURE=true` byłoby niebezpieczne.
+- Rate limiter nie jest trwały i nie współdzieli stanu między procesami.
+
+### Odrzucone alternatywy
+
+- **Form login Spring Security** — przekierowania i brak kontroli nad kształtem JSON; kontrakt wymaga problem details i własnych kodów.
+- **`csrf.spa()`** — w tej konfiguracji powoduje duplikację cookie i rozjazd wartości w ciele odpowiedzi; prosty handler jest przewidywalny.
+- **Poleganie na domyślnym `CsrfFilter` i domyślnym `AccessDeniedHandler`** — daje `403` przed `401` i inne ciało błędu.
+- **JWT i sesja bezstanowa** — sprzeczne z wymaganiem sesji serwerowej, unieważniania i rotacji po logowaniu.
+- **Limit prób w bazie lub Redis** — nadmiar dla jednej instancji; Redis jest poza MVP.
+- **Ufanie `X-Forwarded-For` bez proxy** — klient mógłby obejść limit, podmieniając nagłówek.
+- **Ignorowanie nieznanych pól JSON** — pozwalałoby klientowi sugerować `ownerId`; kontrakt wymaga odrzucenia.
+- **Token CSRF wyłącznie w sesji** — frontend nie odczytałby go bez dodatkowego endpointu; cookie + treść odpowiedzi są zgodne z kontraktem.
+- **Brak rotacji sesji przy ponownym logowaniu** — pozostawiałby ważny stary identyfikator.
+
+### Powiązane wymagania
+
+R02, R06, R10.
+
+---
+
 ## Zasady zmian decyzji
 
 - Zmiana zaakceptowanej decyzji wymaga nowego wpisu lub wyraźnego oznaczenia poprzedniego jako `Superseded`.

@@ -1,6 +1,6 @@
 # Otwarte kwestie
 
-Stan na **2026-11-05**. Dokument uzupełnia README i ADR-y; każda kwestia ma jawnie wskazany status, żeby nie pozostawiać niejawnych założeń dotyczących dostępu i bezpieczeństwa.
+Stan na **2026-11-06**. Dokument uzupełnia README i ADR-y; każda kwestia ma jawnie wskazany status, żeby nie pozostawiać niejawnych założeń dotyczących dostępu i bezpieczeństwa.
 
 ## Legenda
 
@@ -58,6 +58,7 @@ Stan na **2026-11-05**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q42 | Topologia Docker | Tylko `3000:80` publiczne; backend i db wewnętrzne; sieci `edge`/`data`; wolumen `pgdata`; klucz demo nadpisywalny z `.env` | Przyjęte | ADR-11, R05 |
 | Q43 | Mapowanie JPA i repozytoria | `created_at` z bazy przez `@Generated`; relacja jednokierunkowa `Message.owner`; repozytoria owner-scoped z kursorem; encje poza API; `ddl-auto=validate` | Przyjęte | ADR-12, R04/R06 |
 | Q44 | Źródło i profil kont demo | `application-local.properties`; seed tylko przy profilu `local`; Compose domyślnie `local`, nadpisywalny przez `SPRING_PROFILES_ACTIVE`; poza `local` brak seedu | Przyjęte | ADR-13, R02/R06 |
+| Q45 | Logowanie, sesja i CSRF | Ręczny login JSON; `JSESSIONID` `HttpOnly`/`SameSite=Lax`/30 min; `XSRF-TOKEN` + `X-XSRF-TOKEN`; rotacja sesji i tokenu po logowaniu; login zawsze wymaga CSRF; `401` przed `403`; limiter 5 nieudanych/60 s na IP+login; `Secure` przez `SESSION_COOKIE_SECURE` | Przyjęte | ADR-14, R02/R06 |
 
 ## Zasady rozstrzygania
 

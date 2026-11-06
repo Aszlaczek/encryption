@@ -2,7 +2,7 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-07 — konta demonstracyjne (`alice`, `bob`) są seedowane wyłącznie w profilu `local`, a hasła są hashowane Argon2id (domyślne parametry Spring Security, przypięte jawnie). `AppUserDetailsService` normalizuje login i udostępnia konta Spring Security. Testy integracyjne potwierdzają hashe w bazie, poprawne/błędne hasło oraz brak seedu poza profilem lokalnym. Endpointy API nie są jeszcze zaimplementowane; testy E2E, CI i warstwa serwisowa należą do kolejnych zadań.
+> **Status:** ZR-08 — logowanie, sesja serwerowa i CSRF działają zgodnie z [`docs/API.md`](docs/API.md). Dostępne są `GET /api/auth/csrf`, `POST /api/auth/login`, `GET /api/auth/me` i `POST /api/auth/logout`, z rotacją identyfikatora sesji i tokenu CSRF po logowaniu, limitem 5 nieudanych prób na 60 s na parę IP + login oraz błędami RFC 9457 z kolejnością `401` przed `403`. Testy backendu: **41/41**. Endpointy `crypto` i `messages`, frontend logowania, testy E2E i CI pozostają do wykonania.
 
 **Repozytorium:** <https://github.com/Aszlaczek/encryption>
 
@@ -97,11 +97,15 @@ Pozostałe ścieżki `/api/**` wymagają uwierzytelnienia. Logowanie jest public
 
 ### Sesja i CSRF
 
-- Sesja oparta o `JSESSIONID`, cookie `HttpOnly` i `SameSite=Lax`.
-- Operacje zmieniające stan wymagają nagłówka `X-XSRF-TOKEN`.
-- Po zalogowaniu token CSRF jest odświeżany.
-- Wylogowanie unieważnia sesję po stronie serwera.
-- W środowisku lokalnym cookie nie ma flagi `Secure` (HTTP); w produkcji wymagany jest TLS i flaga `Secure`.
+- Sesja serwerowa oparta o `JSESSIONID`, cookie `HttpOnly` i `SameSite=Lax`; wygasa po 30 minutach bezczynności.
+- Sesje są przechowywane w pamięci jednej instancji; restart backendu wymaga ponownego logowania.
+- Jeden użytkownik może mieć wiele równoległych sesji; wylogowanie unieważnia tylko bieżącą.
+- Po zalogowaniu rotowany jest identyfikator sesji oraz token CSRF.
+- Operacje zmieniające stan wymagają nagłówka `X-XSRF-TOKEN` o wartości równej cookie `XSRF-TOKEN`.
+- Logowanie zawsze wymaga CSRF, nawet bez sesji. Dla chronionych zasobów `401` ma pierwszeństwo przed `403`.
+- Brak lub niezgodny token → `403 CSRF_INVALID`; wylogowanie czyści oba cookie (`Max-Age=0`).
+- W środowisku lokalnym cookie nie ma flagi `Secure` (HTTP); w produkcji wymagany jest TLS i `SESSION_COOKIE_SECURE=true`.
+- Błędne hasło, nieistniejący login i konto wyłączone dają identyczną odpowiedź `401 INVALID_CREDENTIALS`; limit prób działa na parze IP + znormalizowany login i nie ujawnia istnienia konta.
 
 ### Szyfrowanie
 
@@ -165,11 +169,11 @@ node scripts/validate-api-contract.mjs
 | ID | Wymaganie | Planowany dowód |
 |---|---|---|
 | R01 | Frontend JavaScript z React/Angular | Szkielet React 19 + Vite 7 + TypeScript 6; `npm run build` oraz 3 testy komponentów (Vitest + RTL); E2E Playwright w kolejnym zadaniu |
-| R02 | Logowanie i walidacja danych | Kontrakt logowania, sesji i CSRF w `docs/API.md`; `PasswordEncoder` Argon2id (16 MiB, 2 iteracje, salt 16 B, hash 32 B) i `AppUserDetailsService`; konta demo tylko w profilu `local`; normalizacja loginu; 10 testów jednostkowych i integracyjnych; endpointy i E2E w kolejnych zadaniach |
+| R02 | Logowanie i walidacja danych | Kontrakt logowania, sesji i CSRF w `docs/API.md`; `PasswordEncoder` Argon2id (16 MiB, 2 iteracje, salt 16 B, hash 32 B); `AppUserDetailsService` i `AppUserPrincipal`; konta demo tylko w profilu `local`; endpointy `csrf`, `login`, `me`, `logout`; rotacja sesji i CSRF; limit 5 nieudanych prób/minutę; walidacja JSON, `413`, `415` i błędy RFC 9457; 15 testów integracyjnych auth + 7 jednostkowych; E2E w kolejnym zadaniu |
 | R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Spring Boot 4.1.2 / Java 17; `./mvnw verify` z Testcontainers PostgreSQL 16 i Flyway; kontrakt AES-256-GCM w `docs/API.md`; implementacja `CryptoService` w kolejnym zadaniu |
 | R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`–`V3` (V3 tylko komentarz), ograniczenia CHECK, FK i indeks; encje `AppUser`/`Message` i repozytoria owner-scoped z zapytaniem kursorowym; 7 testów integracyjnych na Testcontainers PostgreSQL 16 (`./mvnw verify`); walidacja schematu (`./scripts/validate-schema.sh`); kontrakt CRUD i paginacji w `docs/API.md` |
 | R05 | Uruchomienie lokalne w Dockerze | Trzy usługi Compose z healthcheckami; `docker compose down -v` → `docker compose up -d --build` kończy się `healthy`; tylko `3000:80` jest publiczne; backend łączy się z `db:5432`; wolumen `encryption_pgdata` przeżywa restart |
-| R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Macierz statusów, katalog kodów, `404` dla obcych zasobów i limity w `docs/API.md`; walidacja spójności dokumentacji; testy negatywne w kolejnych zadaniach |
+| R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Macierz statusów, katalog kodów, `404` dla obcych zasobów i limity w `docs/API.md`; `SecurityFilterChain` z kolejnością `401` przed `403`; CSRF wymagany dla logowania i mutacji zalogowanych; odrzucanie nieznanych pól JSON; limit rozmiaru żądania; `Cache-Control: no-store` i `X-Request-Id`; testy integracyjne błędów, walidacji, `413`/`415`, `429` i izolacji sesji |
 | R07 | Responsywność | Strona główna responsywna od 320 px; zrzuty ekranu Playwright przy 360, 768 i 1280 px w kolejnym zadaniu |
 | R08 | Dostępność | Semantyczne nagłówki, landmarki, skip link i widoczny focus; skan axe w kolejnym zadaniu |
 | R09 | Wydajność | Paginacja, indeks `(owner_id, created_at desc, id desc)`, limity; pomiary `hey` i `EXPLAIN ANALYZE` w `docs/PERFORMANCE.md` |
@@ -345,7 +349,9 @@ Konta są tworzone wyłącznie przy aktywnym profilu `local` (`application-local
 |---|---|---|
 | Backend — jednostkowe i integracyjne | JUnit 5, Testcontainers | `cd backend && ./mvnw verify` |
 | Backend — mapowanie JPA i schemat | JUnit 5, Testcontainers PostgreSQL 16, Flyway | `PersistenceIntegrationTests` — 7 testów (migracje, powtarzalny start, UNIQUE, FK/cascade, długości, repozytoria, kursor) |
-| Backend — hashowanie i konta demo | JUnit 5, Spring Security, Testcontainers | 10 testów: Argon2id i długość hasha, normalizacja loginu, seed w `local`, idempotencja, brak seedu poza `local` |
+| Backend — hashowanie i konta demo | JUnit 5, Spring Security, Testcontainers | 10 testów: Argon2id i długość hasha, normalizacja loginu, seed w `local`, idempotencja, brak seedu poza `local`, principal z `id` |
+| Backend — logowanie, sesja i CSRF | JUnit 5, MockMvc, Spring Security, Testcontainers | `AuthIntegrationTests` — 15 testów: CSRF, login, `/me`, logout, rotacja sesji i tokenu, `401` przed `403`, nierozróżnialne błędne dane, walidacja, `413`/`415`, `429`, nieznane ścieżki, `X-Request-Id` |
+| Backend — limiter i problem details | JUnit 5 | `LoginRateLimiterTests` (5), `AppUserPrincipalTests` (2), `ApiProblemFactoryTests` (2) |
 | Backend — format i higiena | Spotless, Enforcer | `cd backend && ./mvnw spotless:check verify` |
 | Schemat bazy i migracje | PostgreSQL 16, psql, Docker | `./scripts/validate-schema.sh` |
 | Kontrakt API i dokumentacja | Node.js, `node:crypto` | `node scripts/validate-api-contract.mjs` |
@@ -356,6 +362,23 @@ Konta są tworzone wyłącznie przy aktywnym profilu `local` (`application-local
 | Docker — czysty start | Docker Compose, healthchecki | `docker compose down -v && docker compose up -d --build` |
 | Wydajność | `hey`, `EXPLAIN ANALYZE` | opis w `docs/PERFORMANCE.md` |
 | CI | GitHub Actions | workflow w `.github/workflows/ci.yml` (kolejne zadanie) |
+
+Wynik ZR-08 (2026-11-06, JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16, curl przez nginx `:3000`):
+
+```text
+./mvnw spotless:check verify  -> Tests run: 41, Failures: 0, Errors: 0, Skipped: 0; BUILD SUCCESS
+GET /api/auth/csrf            -> 200; XSRF-TOKEN Path=/; SameSite=Lax; bez HttpOnly; brak sesji
+POST /api/auth/login          -> 200; nowy JSESSIONID HttpOnly; SameSite=Lax; nowy XSRF-TOKEN; login znormalizowany
+GET /api/auth/me              -> 200; {"id":"...","username":"alice"}
+POST /api/auth/logout         -> bez tokenu 403 CSRF_INVALID; bez sesji 401 UNAUTHENTICATED; z tokenem 204
+Po wylogowaniu                -> /api/auth/me 401; oba cookie wyczyszczone (Max-Age=0)
+Rotacja                       -> identyfikator sesji i token CSRF zmienione; stary token z nowym cookie -> 403
+Limit prób                    -> 5x 401; 6. próba 429 RATE_LIMITED z Retry-After: 60; inny login na tym samym IP -> 200
+Błędne dane                   -> złe hasło i nieistniejący login: identyczny 401 poza traceId
+Walidacja                     -> nieznane pole 400 VALIDATION_FAILED; zły JSON 400 MALFORMED_JSON
+Transport                     -> text/plain 415; >65 536 B 413; anonimowe /api/unknown 401
+Compose                       -> 3 kontenery healthy; publiczne tylko 3000:80
+```
 
 Wynik ZR-07 (2026-11-05, JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16):
 
@@ -455,9 +478,10 @@ Testy negatywne obejmą w szczególności:
 - Obrazy budują się z `-DskipTests`, ponieważ Testcontainers wymagają Dockera hosta; testy backendu uruchamia się osobno (`./mvnw verify`).
 - Encje JPA i repozytoria są warstwą wewnętrzną; nie są jeszcze używane przez API i nie wolno zwracać ich bezpośrednio z kontrolerów. DTO oraz endpointy powstaną w kolejnych zadaniach.
 - Vite dev server nie proxuje jeszcze `/api`; pełny przepływ w jednym origin zapewnia Compose, a proxy dla trybu dev powstanie wraz z implementacją API.
-- Kontrakt API jest zweryfikowany statycznie; endpointy nie są jeszcze zaimplementowane, więc `curl` i testy kontraktowe wykonamy w kolejnych zadaniach.
-- Frontend jest szkieletem strony głównej; formularze logowania i szyfrowania powstaną w kolejnych zadaniach.
-- Backend nie ma jeszcze endpointu logowania ani konfiguracji Spring Security zgodnej z `docs/API.md`; `AppUserDetailsService` i encoder są gotowe, ale endpointy pozostają zablokowane do czasu implementacji.
+- Kontrakt API jest zweryfikowany statycznie, a endpointy logowania, sesji i CSRF są pokryte testami integracyjnymi i sprawdzone przez `curl`. Endpointy `crypto` i `messages` pozostają do zaimplementowania.
+- Frontend jest szkieletem strony głównej; formularz logowania, obsługa CSRF i formularze szyfrowania powstaną w kolejnych zadaniach.
+- `SecurityFilterChain`, logowanie, sesja, CSRF i limiter prób są zaimplementowane. Brakuje `CryptoService`, DTO/endpointów wiadomości oraz limitów dla szyfrowania i deszyfrowania.
+- Rate limiter logowania jest lokalny dla instancji i trzyma wpisy w pamięci; nie współdzieli stanu między replikami i nie jest trwały po restarcie.
 - Skrypt `check-secrets.sh` jest heurystyczny i nie zastępuje skanera historii Git.
 - OpenAPI/springdoc jest odłożone; kanonicznym dokumentem pozostaje `docs/API.md`.
 - Pełna lista otwartych kwestii i przyjętych wartości znajduje się w [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md).
@@ -472,6 +496,7 @@ Testy negatywne obejmą w szczególności:
 - [`ADR-11`](docs/DECISIONS.md#adr-11--topologia-docker-compose) — topologia Compose, sieci i porty.
 - [`ADR-12`](docs/DECISIONS.md#adr-12--mapowanie-jpa-i-repozytoria) — mapowanie JPA, `created_at` z bazy, repozytoria owner-scoped.
 - [`ADR-13`](docs/DECISIONS.md#adr-13--argon2id-i-konta-demo-w-profilu-local) — Argon2id, parametry, seed tylko w profilu `local`.
+- [`ADR-14`](docs/DECISIONS.md#adr-14--logowanie-sesja-i-csrf) — logowanie sesyjne, rotacja sesji i CSRF, kolejność `401`/`403`, limiter logowania i polityka cookie.
 
 Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`](docs/DECISIONS.md). Szczegóły schematu: [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md). Kontrakt HTTP: [`docs/API.md`](docs/API.md).
 
@@ -495,20 +520,21 @@ Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`]
 │   └── src/
 │       ├── main/java/com/szlaczek/backend/
 │       │   ├── BackendApplication.java
-│       │   ├── auth/         # AppUser, repozytorium, normalizacja, seed demo, UserDetailsService
+│       │   ├── auth/         # AppUser, principal, logowanie, sesja, logout, limiter, seed demo
+│       │   ├── auth/api/     # DTO i kontroler /api/auth
 │       │   ├── crypto/       # AES-256-GCM, format pakietu
 │       │   ├── message/      # Message, MessageRepository; paginacja kursorowa
 │       │   └── common/
-│       │       ├── security/ # PasswordEncoderConfig (Argon2id), konfiguracja bezpieczeństwa
-│       │       └── web/      # błędy RFC 9457, nagłówki
+│       │       ├── security/ # SecurityFilterChain, CSRF, entry point, Argon2id
+│       │       └── web/      # RFC 9457, walidacja transportu, nagłówki, limit 64 KiB
 │       ├── main/resources/
 │       │   ├── application.properties
 │       │   ├── application-local.properties
 │       │   └── db/migration/{V1__create_app_users.sql, V2__create_messages.sql, V3__update_password_hash_comment.sql}
 │       └── test/java/com/szlaczek/backend/
 │           ├── PersistenceIntegrationTests.java
-│           ├── auth/         # normalizacja, seed i brak seedu poza local
-│           └── common/security/ # test parametrów Argon2id
+│           ├── auth/         # logowanie, sesja, CSRF, limiter, seed i brak seedu poza local
+│           └── common/       # Argon2id, problem details
 ├── frontend/
 │   ├── Dockerfile            # Node build -> nginx
 │   ├── nginx.conf            # SPA, proxy /api, problem+json 413

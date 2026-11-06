@@ -30,6 +30,8 @@ services:
       APP_CRYPTO_KEY: ${APP_CRYPTO_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
       # The local profile seeds the two public demo accounts. Override to disable them.
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      # Set to true behind HTTPS so JSESSIONID and XSRF-TOKEN get the Secure flag.
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
     depends_on:
       db:

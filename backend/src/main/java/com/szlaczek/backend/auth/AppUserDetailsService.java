@@ -1,6 +1,5 @@
 package com.szlaczek.backend.auth;
 
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -33,10 +32,7 @@ public class AppUserDetailsService implements UserDetailsService {
                 .findByUsername(normalized)
                 .orElseThrow(() -> new UsernameNotFoundException("Invalid credentials"));
 
-        return User.withUsername(user.getUsername())
-                .password(user.getPasswordHash())
-                .disabled(!user.isEnabled())
-                .roles("USER")
-                .build();
+        return new AppUserPrincipal(
+                user.getId(), user.getUsername(), user.getPasswordHash(), user.isEnabled());
     }
 }
