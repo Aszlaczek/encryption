@@ -452,7 +452,7 @@ Wynik ZR-03 (2026-11-04, Node.js v22.19.0):
 OK: 28 przykładów JSON, 12 endpointów, 19 kodów głównych, 8 kodów pól, 5 pakietów, 1 przykład paginacji, wektor AES-256-GCM zgodny.
 ```
 
-Testy negatywne obejmą w szczególności:
+Testy negatywne obejmują w szczególności (część auth zrealizowana w ZR-08, reszta wraz z endpointami `crypto` i `messages`):
 
 - brak sesji i wygaśnięcie sesji,
 - brak lub błędny token CSRF,

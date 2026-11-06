@@ -6,12 +6,13 @@ Ten plik jest automatycznie ładowany przez OpenCode. Zawiera skrót; szczegół
 
 Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: frontend React + Vite + TypeScript (UI po polsku), backend Spring Boot 4.1.2 / Java 17, PostgreSQL 16, uruchamiane przez Docker Compose. Hasła są hashowane Argon2id, a treść wiadomości szyfrowana po stronie serwera AES-256-GCM. Szczegóły wymagań: [`README.md`](README.md), kontrakt HTTP: [`docs/API.md`](docs/API.md).
 
-## Aktualny stan (2026-11-05)
+## Aktualny stan (2026-11-06)
 
-- Ostatni commit: `eca5f3a` — ZR-07 (Argon2id + konta demo w profilu `local`); `main == origin/main`, drzewo czyste.
-- Ukończone: ZR-01…ZR-07 (zakres/ADR, szkielet backendu, schemat i migracje, kontrakt API, szkielety repo, Compose, encje JPA, hashowanie i konta demo).
-- **Nie ma jeszcze** kontrolerów REST, `SecurityFilterChain` zgodnego z kontraktem, logowania, sesji, CSRF, `CryptoService` ani endpointów wiadomości. `GET /api/messages` zwraca `401`.
-- Testy: 17/17 backendu (`./mvnw verify`), 3 frontendu (`npm test`). Brak testów E2E, CI i `docs/PERFORMANCE.md`.
+- Ostatni commit funkcjonalny: `fb2c9b5` — ZR-08 (logowanie, sesja i CSRF); `main == origin/main`, drzewo czyste.
+- Ukończone: ZR-01…ZR-08 (zakres/ADR, szkielet backendu, schemat i migracje, kontrakt API, szkielety repo, Compose, encje JPA, hashowanie i konta demo, logowanie/sesja/CSRF).
+- Działa: `GET /api/auth/csrf`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`, rotacja sesji i CSRF, limiter 5/60 s, błędy RFC 9457, `413`/`415`, `X-Request-Id`.
+- **Nie ma jeszcze** `CryptoService`, endpointów `crypto` i `messages`, limitów szyfrowania/deszyfrowania oraz frontendu logowania. Anonimowe `GET /api/messages` zwraca `401`; z sesją zwróci `404`, bo endpoint nadal nie istnieje.
+- Testy: 41/41 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`). Brak testów E2E, CI i `docs/PERFORMANCE.md`.
 
 ## Najpierw przeczytaj
 
@@ -19,8 +20,8 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 2. [`README.md`](README.md) — status, uruchomienie, dowody R01–R10.
 3. [`docs/API.md`](docs/API.md) — **kanoniczny** kontrakt HTTP, DTO, błędy, format pakietu, kursor.
 4. [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — schemat, mapowanie JPA, migracje, Argon2id.
-5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-13.
-6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q44 (rozstrzygnięte i otwarte).
+5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-14.
+6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q45 (rozstrzygnięte i otwarte).
 
 Gdy dokumenty się różnią, rozstrzyga `docs/API.md` dla HTTP i `docs/DATA_MODEL.md` dla bazy. Zmiana zachowania wymaga aktualizacji dokumentu i ADR w **tym samym commicie**.
 
@@ -48,7 +49,20 @@ docker compose up -d --build      # pierwszy start / przebudowa
 docker compose up -d              # kolejne starty
 docker compose ps                 # 3 kontenery powinny być healthy
 curl -i http://localhost:3000/actuator/health
-curl -i http://localhost:3000/api/messages   # obecnie 401
+curl -i http://localhost:3000/api/messages   # 401 bez sesji; 404 z sesją (brak endpointu)
+
+# Auth: CSRF -> login -> me -> logout
+JAR=$(mktemp)
+curl -sS -c "$JAR" http://localhost:3000/api/auth/csrf
+TOKEN=$(awk '$6=="XSRF-TOKEN"{print $7}' "$JAR")
+curl -sS -b "$JAR" -c "$JAR" -H 'Content-Type: application/json' \
+  -H "X-XSRF-TOKEN: $TOKEN" \
+  --data '{"username":"alice","password":"AliceDemo123!"}' \
+  http://localhost:3000/api/auth/login
+curl -sS -b "$JAR" http://localhost:3000/api/auth/me
+TOKEN=$(awk '$6=="XSRF-TOKEN"{print $7}' "$JAR")
+curl -sS -b "$JAR" -c "$JAR" -X POST -H "X-XSRF-TOKEN: $TOKEN" \
+  http://localhost:3000/api/auth/logout
 
 # Weryfikacja schematu, kontraktu i sekretów (z katalogu głównego)
 ./scripts/validate-schema.sh
@@ -78,6 +92,9 @@ docker compose exec -T db psql -U encryption -d encryption -c 'select username, 
 10. **Argon2id** z parametrami z `PasswordEncoderConfig` (salt 16 B, hash 32 B, parallelism 1, 16 MiB, 2 iteracje); hash ma 97 znaków i mieści się w `varchar(100)`.
 11. **Konta demo tylko w profilu `local`**, seed idempotentny i bez nadpisywania haseł.
 12. **Format pakietu i limity** zgodne z `docs/API.md` (m.in. 10 000 code points / 40 000 B plaintext, 56 000 znaków pakietu, 65 536 B żądania).
+13. **Logowanie zawsze wymaga CSRF**, a po sukcesie rotują się identyfikator sesji i token CSRF.
+14. **Sesja to `JSESSIONID`** z `HttpOnly` i `SameSite=Lax`, 30 min bezczynności; `Secure` tylko przez `SESSION_COOKIE_SECURE`.
+15. **Błędy auth i transportu** mają RFC 9457 z `code`; `413`/`415` wyprzedzają uwierzytelnienie, a `429` występuje przed weryfikacją hasła.
 
 ## Zasady pracy
 
@@ -98,7 +115,13 @@ docker compose exec -T db psql -U encryption -d encryption -c 'select username, 
 - **Compose domyślnie używa profilu `local`** — wdrożenie produkcyjne musi ustawić inny `SPRING_PROFILES_ACTIVE`, inaczej powstaną konta demo.
 - **`varchar(100)`** daje mały zapas na podniesienie parametrów Argon2id; zmiana parametrów wymaga świadomej decyzji i nowej migracji.
 - **Nginx** proxuje `/api/` i `/actuator/health`; nie publikuj portów backendu ani bazy.
+- **`csrf.spa()` powoduje duplikację cookie** — używany jest zwykły `CsrfTokenRequestAttributeHandler`; nie wracaj do `spa()` bez testu wartości cookie i ciała.
+- **MockMvc gubi atrybuty cookie** (`SameSite`, część `JSESSIONID`); politykę cookie weryfikuj rzeczywistym `curl` przez nginx.
+- **Kolejność filtrów:** `ApiRequestHeadersFilter` ma `HIGHEST_PRECEDENCE` (413/415 przed auth), a `ApiCsrfRequestMatcher` przepuszcza anonimowe mutacje do autoryzacji, żeby `401` wyprzedziło `403`.
+- **`X-Real-IP` jest zaufane tylko za nginx** — nie ufaj `X-Forwarded-For` od klienta i nie zmieniaj resolvera bez proxy.
+- **Sesje i limiter są in-memory** — restart wymaga logowania, a wiele replik wymaga Redis/sticky sessions.
+- **`SESSION_COOKIE_SECURE=false` lokalnie** — wdrożenie za HTTPS musi ustawić `true`, inaczej cookie nie zostanie odesłane lub będzie niebezpieczne.
 
 ## Następny krok
 
-Implementacja logowania, sesji i CSRF zgodnie z `docs/API.md` (`GET /api/auth/csrf`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `SecurityFilterChain`), a następnie DTO, serwis i endpointy wiadomości oraz `CryptoService`. Po nich: testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).
+Implementacja `CryptoService` i `PackageCodec` (AES-256-GCM, AAD `v1:<ownerId>:<keyId>`, walidacja formatu i długości), następnie DTO, serwis i endpointy `crypto` oraz `messages` z paginacją kursorową i limitami. Po nich: frontend logowania, testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).

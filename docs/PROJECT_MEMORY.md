@@ -2,12 +2,12 @@
 
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
-- **Ostatnia aktualizacja:** 2026-11-05
-- **Ostatni commit:** `eca5f3a` — `feat(auth): Argon2id i konta demo tylko w profilu lokalnym (ZR-07)`
+- **Ostatnia aktualizacja:** 2026-11-06
+- **Ostatni commit funkcjonalny:** `fb2c9b5` — `feat(auth): logowanie, sesja i CSRF (ZR-08)`
 - **Gałąź:** `main`, zsynchronizowana z `origin/main`
 - **Stan drzewa:** czysty
-- **Zadania ukończone:** ZR-01…ZR-07
-- **Następne zadanie:** logowanie, sesja i CSRF zgodnie z `docs/API.md`
+- **Zadania ukończone:** ZR-01…ZR-08
+- **Następne zadanie:** `CryptoService` i endpointy wiadomości
 
 ## 1. Cel projektu
 
@@ -30,16 +30,19 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 - Encje JPA `AppUser` i `Message`, repozytoria owner-scoped, paginacja kursorowa.
 - Argon2id z jawnie przypiętymi parametrami oraz normalizacja loginu.
 - Dwa konta demonstracyjne (`alice`, `bob`) seedowane tylko w profilu `local`.
+- Logowanie `POST /api/auth/login`, sesja serwerowa, `GET /api/auth/me`, `POST /api/auth/logout` i `GET /api/auth/csrf`.
+- Rotacja identyfikatora sesji i tokenu CSRF po logowaniu; logout unieważnia tylko bieżącą sesję.
+- Limit 5 nieudanych logowań na 60 s na parę IP + login, z `429` i `Retry-After`.
+- Błędy RFC 9457 z kodami `code`, `Cache-Control: no-store`, `X-Request-Id`, limit 65 536 B i `415` dla złego `Content-Type`.
 - Compose z trzema zdrowymi kontenerami, nginx jako jedyny publiczny punkt wejścia.
-- `/actuator/health` zwraca `200`; `/api/messages` zwraca `401`, bo endpointy nie istnieją.
+- `/actuator/health` zwraca `200`; anonimowe `/api/messages` zwraca `401`.
 
 ### Jeszcze nie istnieje
 
-- kontrolery REST i warstwa serwisowa,
-- `SecurityFilterChain` zgodny z kontraktem (sesja, CSRF, kolejność `401`/`403`),
-- endpointy `auth`, `crypto` i `messages`,
 - `CryptoService` i walidacja formatu pakietu w czasie żądania,
-- DTO i mapowanie błędów RFC 9457 z kodami `code`,
+- endpointy `crypto` i `messages`, DTO wiadomości i paginacja przez HTTP,
+- limity szyfrowania/deszyfrowania (60/min i 30/min),
+- frontend logowania i obsługa CSRF w SPA,
 - testy E2E, konfiguracja CI, `docs/PERFORMANCE.md`,
 - rotacja kluczy i obsługa wielu aktywnych kluczy.
 
@@ -47,7 +50,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 
 | Warstwa | Liczba | Uruchomienie |
 |---|---:|---|
-| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 17 | `cd backend && ./mvnw verify` |
+| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 41 | `cd backend && ./mvnw verify` |
 | Frontend (Vitest + Testing Library) | 3 | `cd frontend && npm test` |
 | E2E | 0 | brak |
 
@@ -67,6 +70,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-05 | `fedf9ba` | 2026-11-05 | Compose, nginx, wieloetapowe obrazy, sieci `edge`/`data`, healthchecki, wolumen `pgdata` | `docker compose up -d --build`, 3 kontenery healthy |
 | ZR-06 | `65504f2` | 2026-11-05 | Encje JPA, repozytoria owner-scoped, testy schematu i kursora | `./mvnw verify` — 7/7, `validate-schema.sh` |
 | ZR-07 | `eca5f3a` | 2026-11-05 | Argon2id, `AppUserDetailsService`, konta demo tylko w profilu `local`, migracja `V3` (komentarz kolumny) | `./mvnw verify` — 17/17, Compose, psql |
+| ZR-08 | `fb2c9b5` | 2026-11-06 | Logowanie, sesja, CSRF, `/me`, logout, rotacja, limiter, RFC 9457, limity transportu | `./mvnw verify` — 41/41, curl przez nginx, Compose |
 
 ### ZR-01 — zakres i decyzje
 
@@ -139,6 +143,35 @@ Compose                        -> 3 kontenery healthy
 /api/messages                  -> 401 (brak endpointów)
 ```
 
+### ZR-08 — logowanie, sesja i CSRF
+
+- `SecurityFilterChain` obejmuje `/api/**` i `/actuator/health`; form login, HTTP Basic i domyślny logout są wyłączone. Sesja jest serwerowa (`IF_REQUIRED`) i zapisywana jawnie przez `HttpSessionSecurityContextRepository`.
+- `AuthController` udostępnia `GET /api/auth/csrf`, `POST /api/auth/login`, `GET /api/auth/me` i `POST /api/auth/logout`.
+- `AppUserPrincipal` przenosi `UUID id`, login, hash i `enabled`; `/me` nie wykonuje dodatkowego zapytania do bazy.
+- Po logowaniu `AuthService` rotuje identyfikator sesji (`changeSessionId`), zapisuje nowy kontekst i generuje nowy token CSRF.
+- `ApiCsrfRequestMatcher` realizuje kolejność `401` przed `403`: anonimowe mutacje nie są blokowane przez CSRF, logowanie zawsze wymaga tokenu, a mutacje zalogowanych — również.
+- `CookieCsrfTokenRepository` używa `XSRF-TOKEN` (`Path=/`, `SameSite=Lax`, bez `HttpOnly`) i nagłówka `X-XSRF-TOKEN`. Używany jest zwykły `CsrfTokenRequestAttributeHandler`, nie `csrf.spa()`.
+- `LoginRateLimiter` trzyma w pamięci 5 nieudanych prób na 60 s dla pary IP + znormalizowany login; szósta próba daje `429 RATE_LIMITED` z `Retry-After`, a sukces zeruje licznik.
+- Błędne hasło, nieistniejący login i konto wyłączone dają identyczne `401 INVALID_CREDENTIALS`; `DaoAuthenticationProvider` ma włączone ukrywanie braku użytkownika i dodatkowe kontrole.
+- `ApiRequestHeadersFilter` działa przed Spring Security: dodaje `X-Request-Id`, `Cache-Control: no-store`, `nosniff`, zwraca `413` powyżej 65 536 B i `415` dla mutacji bez JSON UTF-8 (poza logoutem).
+- `ApiExceptionHandler` mapuje walidację, nieznane pola, zły JSON, `405` i nieoczekiwane błędy na RFC 9457; Jackson 3 odrzuca nieznane pola i duplikaty kluczy.
+- Cookie `Secure` jest sterowane przez `SESSION_COOKIE_SECURE` (`false` lokalnie, `true` za HTTPS). Sesja wygasa po 30 minutach. Bez migracji bazy.
+
+Weryfikacja ZR-08:
+
+```text
+./mvnw spotless:check verify   -> 41/41 testów, BUILD SUCCESS
+GET /api/auth/csrf             -> 200; cookie XSRF-TOKEN; brak sesji
+POST /api/auth/login           -> 200; nowy JSESSIONID i XSRF-TOKEN
+GET /api/auth/me               -> 200; poprawny użytkownik
+POST /api/auth/logout          -> 204 z CSRF; 403 bez CSRF; 401 bez sesji
+rotacja                        -> sessionId i token CSRF zmienione; stary token -> 403
+limit prób                     -> 5x 401, 6. próba 429 + Retry-After: 60
+błędne dane                    -> identyczne 401 poza traceId
+walidacja/transport            -> 400, 413, 415, 401 dla anonimowego /api/unknown
+Compose                        -> 3 kontenery healthy; publiczne tylko 3000:80
+```
+
 ## 4. Architektura i układ repozytorium
 
 ```text
@@ -149,8 +182,8 @@ Compose                        -> 3 kontenery healthy
 ├── docs/
 │   ├── API.md                # kanoniczny kontrakt HTTP
 │   ├── DATA_MODEL.md         # schemat, JPA, migracje
-│   ├── DECISIONS.md          # ADR-01, ADR-07…ADR-13
-│   ├── OPEN_QUESTIONS.md     # Q01…Q44
+│   ├── DECISIONS.md          # ADR-01, ADR-07…ADR-14
+│   ├── OPEN_QUESTIONS.md     # Q01…Q45
 │   └── PROJECT_MEMORY.md     # ten dokument
 ├── scripts/
 │   ├── check-secrets.sh
@@ -163,11 +196,12 @@ Compose                        -> 3 kontenery healthy
 
 Backend stosuje podział package-by-feature:
 
-- `auth/` — `AppUser`, repozytorium, normalizacja, konta demo, `UserDetailsService`,
+- `auth/` — `AppUser`, `AppUserPrincipal`, repozytorium, normalizacja, konta demo, `AuthService`, `LogoutService`, limiter,
+- `auth/api/` — DTO i kontroler `/api/auth`,
 - `message/` — `Message`, `MessageRepository`, w przyszłości serwis i kontroler,
 - `crypto/` — obecnie tylko pakiet; docelowo AES-256-GCM i format pakietu,
-- `common/security/` — `PasswordEncoderConfig`, docelowo konfiguracja bezpieczeństwa,
-- `common/web/` — obecnie tylko pakiet; docelowo błędy RFC 9457 i nagłówki.
+- `common/security/` — `PasswordEncoderConfig`, `SecurityFilterChain`, CSRF, obsługa `401`/`403`,
+- `common/web/` — RFC 9457, limity transportu, nagłówki, walidatory.
 
 Frontend ma pustą strukturę feature'ów (`auth/`, `crypto/`, `messages/`) oraz `shared/api`, `shared/ui`. Jedyny ekran to statyczny `App.tsx` z nagłówkiem, statusem projektu i linkiem do repozytorium.
 
@@ -217,7 +251,13 @@ Migracje:
 - Konta demo: `alice` / `AliceDemo123!`, `bob` / `BobDemo1234!`.
 - Seed: `DemoUserSeeder`, tylko `@Profile("local")`, idempotentny, bez nadpisywania.
 - Poza profilem `local` seeder nie powstaje; czysta baza z profilem `prod` ma 0 kont demo.
-- Brak endpointu logowania: konta i `UserDetailsService` są gotowe, ale API nadal zwraca `401`.
+- Logowanie: `POST /api/auth/login` z JSON i wymaganym CSRF; login normalizowany, hasło nie.
+- Sesja: `JSESSIONID`, `HttpOnly`, `SameSite=Lax`, `Path=/`, 30 min bezczynności, tylko cookie; `Secure` przez `SESSION_COOKIE_SECURE`.
+- CSRF: cookie `XSRF-TOKEN` + nagłówek `X-XSRF-TOKEN`; token i identyfikator sesji rotują po logowaniu.
+- Wylogowanie: `POST /api/auth/logout`, unieważnia tylko bieżącą sesję i czyści oba cookie.
+- Limit: 5 nieudanych prób na 60 s na IP + znormalizowany login; `429` z `Retry-After`.
+- Błędne hasło, nieistniejący login i konto wyłączone dają identyczne `401 INVALID_CREDENTIALS`.
+- IP do limitera: `X-Real-IP` od nginx, poza Compose `remoteAddr`.
 
 Konfiguracja:
 
@@ -227,16 +267,11 @@ Konfiguracja:
 
 ## 7. Kontrakt API — stan
 
-`docs/API.md` jest kompletny jako kontrakt, ale **nie jest jeszcze zaimplementowany**. Obejmuje:
+`docs/API.md` jest kanonicznym kontraktem. Zaimplementowane są endpointy auth, sesja, CSRF i wspólne błędy. Pozostałe endpointy są nadal kontraktem do wykonania.
 
-- `GET /api/auth/csrf`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`,
-- `POST /api/crypto/encrypt`, `POST /api/crypto/decrypt`,
-- `GET/POST /api/messages`, `GET/DELETE /api/messages/{id}`,
-- sesję `JSESSIONID`, nagłówek `X-XSRF-TOKEN`,
-- błędy RFC 9457 z stabilnym polem `code`,
-- kolejność kontroli: `401` przed `403`,
-- właściciela wyłącznie z sesji,
-- kursor paginacji i limity rozmiarów.
+- **Gotowe:** `GET /api/auth/csrf`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, sesja `JSESSIONID`, CSRF, RFC 9457 z `code`, kolejność `401` przed `403`, limity transportu, `429` dla logowania.
+- **Do wykonania:** `POST /api/crypto/encrypt`, `POST /api/crypto/decrypt`, `GET/POST /api/messages`, `GET/DELETE /api/messages/{id}`, limity szyfrowania/deszyfrowania.
+- Właściciel nadal pochodzi wyłącznie z sesji; dotyczy to przyszłych endpointów wiadomości.
 
 Założenia formatu:
 
@@ -247,14 +282,18 @@ AAD:    v1:<ownerId>:<keyId>
 
 ## 8. Inwentarz testów
 
-### Backend — 17 testów
+### Backend — 41 testów
 
 | Klasa | Liczba | Co sprawdza |
 |---|---:|---|
 | `PersistenceIntegrationTests` | 7 | migracje i walidacja mapowania, powtarzalność schematu, UNIQUE loginu, FK/cascade, CHECK-i długości, scope repozytoriów, kursor |
-| `DemoUserSeedingIntegrationTests` | 4 | dwa konta z hashami Argon2id, dopasowanie haseł, idempotencja bez nadpisywania, brak plaintextu w bazie |
-| `DemoUserSeedingDisabledIntegrationTests` | 2 | brak seedera i kont poza profilem `local`, `UserDetailsService` nie znajduje kont demo |
+| `AuthIntegrationTests` | 15 | CSRF, login, `/me`, logout, rotacja sesji i tokenu, `401` przed `403`, nierozróżnialne błędy, walidacja, `413`/`415`, `429`, nieznane ścieżki, `X-Request-Id` |
+| `DemoUserSeedingIntegrationTests` | 4 | dwa konta z hashami Argon2id, dopasowanie haseł, idempotencja bez nadpisywania, brak plaintextu w bazie, principal z `id` |
+| `LoginRateLimiterTests` | 5 | blokada szóstej próby, okno 60 s, reset po sukcesie, niezależność kluczy IP/login, starzenie wpisów |
 | `UsernameNormalizerTests` | 3 | trim/lowercase, puste dane, `null` |
+| `DemoUserSeedingDisabledIntegrationTests` | 2 | brak seedera i kont poza profilem `local`, `UserDetailsService` nie znajduje kont demo |
+| `AppUserPrincipalTests` | 2 | dane principal sesji, `ROLE_USER`, konto wyłączone |
+| `ApiProblemFactoryTests` | 2 | RFC 9457, `traceId`, `instance`, lista błędów pól |
 | `PasswordEncoderConfigTests` | 1 | parametry Argon2id, długość 97, dopasowanie poprawnego i błędnego hasła, sól, hasło 128 B |
 
 ### Frontend — 3 testy
@@ -282,15 +321,17 @@ AAD:    v1:<ownerId>:<keyId>
 | ADR-11 | Docker | Tylko `3000:80` publiczne, sieci `edge`/`data`, obrazy wieloetapowe, `pgdata`, healthchecki, proxy nginx |
 | ADR-12 | JPA | `created_at` z bazy, jednokierunkowy `Message.owner`, repozytoria owner-scoped, brak encji w API |
 | ADR-13 | Argon2id i konta demo | Parametry Argon2id, BouncyCastle, hash 97 znaków, seed tylko w profilu `local`, limit hasła 128 B |
+| ADR-14 | Logowanie, sesja i CSRF | Ręczny login JSON, sesja serwerowa, rotacja sesji i CSRF, `401` przed `403`, limiter 5/60 s, cookie `HttpOnly`/`SameSite=Lax`, `SESSION_COOKIE_SECURE` |
 
 ### Otwarte kwestie
 
-`docs/OPEN_QUESTIONS.md` zawiera Q01–Q44. Ostatnie przyjęte ustalenia:
+`docs/OPEN_QUESTIONS.md` zawiera Q01–Q45. Ostatnie przyjęte ustalenia:
 
 - Q06 — polityka haseł demo i parametry Argon2id,
 - Q32 — migracje `V1`–`V3` i seed w warstwie aplikacji,
 - Q43 — mapowanie JPA i repozytoria,
-- Q44 — źródło i profil kont demo.
+- Q44 — źródło i profil kont demo,
+- Q45 — logowanie, sesja, CSRF i limiter.
 
 Przed rozpoczęciem nowego zadania sprawdź, czy nie ma otwartego pytania dotyczącego jego zakresu.
 
@@ -312,6 +353,8 @@ Te zasady wynikają z ADR i nie powinny być zmieniane bez nowej decyzji:
 12. Format pakietu, AAD i limity są zgodne z `docs/API.md`.
 13. Publiczny jest tylko port `3000`; backend i baza pozostają w sieci Compose.
 14. Sekrety nie trafiają do repozytorium; `.env.example` zawiera placeholdery.
+15. Logowanie zawsze wymaga CSRF; po logowaniu rotują się identyfikator sesji i token CSRF.
+16. `JSESSIONID` jest `HttpOnly` i `SameSite=Lax`; `Secure` włącza się przez `SESSION_COOKIE_SECURE` i jest wymagane poza lokalnym HTTP.
 
 ## 11. Pułapki i lekcje
 
@@ -327,15 +370,20 @@ Te zasady wynikają z ADR i nie powinny być zmieniane bez nowej decyzji:
 10. **Spójność dokumentów.** `docs/API.md`, `docs/DATA_MODEL.md` i `README.md` opisują te same limity i format pakietu; walidator kontraktu wyłapuje część rozjazdów, ale zmiany trzeba propagować ręcznie w tym samym commicie.
 11. **Historia w README.** Wpisy wyników starszych zadań muszą pozostać oznaczone jako stan historyczny (np. „stan ZR-06”), żeby nie sugerowały, że migracja `V3` istniała wcześniej.
 12. **Sekrety demo.** Hasła `alice` i `bob` są jawne i przeznaczone wyłącznie do demonstracji; nie wolno ich używać w innych środowiskach.
+13. **`csrf.spa()` i duplikacja cookie.** W tej konfiguracji `csrf.spa()` powodował dwa cookie `XSRF-TOKEN` i rozjazd wartości w ciele odpowiedzi. Używany jest zwykły `CsrfTokenRequestAttributeHandler`, a `GET /api/auth/csrf` polega na zapisie tokenu odroczonego przez `CsrfFilter`.
+14. **MockMvc a atrybuty cookie.** `MockHttpServletResponse` gubi `SameSite` i część atrybutów `JSESSIONID` przy `addCookie`; testy MockMvc nie są dowodem polityki cookie. Trzeba to sprawdzić rzeczywistym `curl` przez nginx.
+15. **Kolejność filtrów.** `ApiRequestHeadersFilter` ma `HIGHEST_PRECEDENCE`, żeby `413`/`415` wyprzedzały uwierzytelnienie. `ApiCsrfRequestMatcher` musi widzieć kontekst z sesji, ale anonimowe mutacje muszą przejść do autoryzacji, inaczej `403` wyprzedzi `401`.
+16. **Zaufanie `X-Real-IP`.** Nagłówek jest bezpieczny tylko dlatego, że backend nie jest publikowany, a nginx go nadpisuje. Poza Compose limiter używa `remoteAddr`.
+17. **Rotacja przed zapisem kontekstu.** Przy ponownym logowaniu najpierw `changeSessionId()`, potem zapis kontekstu i nowy CSRF; odwrotna kolejność pozostawia ważny stary identyfikator lub stary token.
 
 ## 12. Następne kroki
 
 Kolejność rekomendowana:
 
-1. **Logowanie, sesja i CSRF** — `SecurityFilterChain`, `GET /api/auth/csrf`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`; testy integracyjne `401`/`403`, rotacji sesji i CSRF.
-2. **Walidacja i błędy** — DTO, walidator wejścia, RFC 9457 z kodami `code`, mapowanie wyjątków, kolejność kontroli.
-3. **Kryptografia** — `CryptoService` AES-256-GCM, format pakietu, AAD, walidacja nonce/tag/długości; wektory testowe z `docs/API.md`.
-4. **Endpointy wiadomości** — create/list/get/delete, owner scope, `404` dla obcych zasobów, paginacja kursorowa, limity.
+1. ~~**Logowanie, sesja i CSRF**~~ — wykonane w ZR-08: `SecurityFilterChain`, endpointy auth, rotacja, limiter, RFC 9457.
+2. ~~**Walidacja i błędy**~~ — wykonane w ZR-08 dla auth i transportu; kolejne DTO dołączą własne walidatory.
+3. **Kryptografia** — `CryptoService` AES-256-GCM, `PackageCodec`, format pakietu, AAD, walidacja nonce/tag/długości; wektory testowe z `docs/API.md`.
+4. **Endpointy wiadomości** — create/list/get/delete, owner scope, `404` dla obcych zasobów, paginacja kursorowa, limity szyfrowania/deszyfrowania.
 5. **Frontend** — formularz logowania, obsługa CSRF, lista i edytor wiadomości, stany błędów, testy komponentów.
 6. **E2E** — Playwright: logowanie, izolacja użytkowników, CRUD, wylogowanie, błędy walidacji.
 7. **CI i wydajność** — workflow GitHub Actions, `docs/PERFORMANCE.md`, testy obciążeniowe i analiza pamięci Argon2id.
@@ -343,7 +391,7 @@ Kolejność rekomendowana:
 Warunki wejścia do kolejnego zadania:
 
 - drzewo czyste i `main == origin/main`,
-- 17/17 testów backendu i 3/3 frontendu,
+- 41/41 testów backendu i 3/3 frontendu,
 - Compose z trzema zdrowymi kontenerami,
 - dokumentacja i ADR zaktualizowane w tym samym commicie,
 - wpis do Notion z rzeczywistym hashem commita i wynikami komend.
