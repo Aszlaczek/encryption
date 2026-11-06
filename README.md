@@ -373,6 +373,8 @@ AuthRateLimitWindowIntegrationTests -> 1/1
   6. próba                      -> 429 RATE_LIMITED; Retry-After: 60
   zegar +61 s                   -> poprawne logowanie 200; username=alice
   czas rzeczywisty testu        -> bez sleep i bez oczekiwania 60 s (MutableClock)
+curl przez nginx :3000          -> 5x 401 INVALID_CREDENTIALS; 6. próba 429 RATE_LIMITED + Retry-After: 60
+po 61 s przez nginx             -> 200; {"id":"...","username":"alice"}
 ```
 
 Wynik ZR-08 (2026-11-06, JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16, curl przez nginx `:3000`):

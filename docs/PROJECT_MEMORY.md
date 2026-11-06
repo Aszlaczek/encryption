@@ -190,6 +190,8 @@ Weryfikacja ZR-09:
 5 nieudanych logowań         -> 401 INVALID_CREDENTIALS
 6. próba                     -> 429 RATE_LIMITED, Retry-After: 60
 zegar +61 s                  -> 200, username=alice
+curl przez nginx :3000       -> 5x 401, 6. próba 429 + Retry-After: 60
+po 61 s przez nginx          -> 200, username=alice
 ```
 
 ## 4. Architektura i układ repozytorium
