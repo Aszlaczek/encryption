@@ -494,7 +494,7 @@ Jednocześnie sesje i limity są przechowywane w pamięci, bo MVP działa jako j
 4. CSRF używa cookie `XSRF-TOKEN` (`Path=/`, `SameSite=Lax`, bez `HttpOnly`, `Secure` zależne od `SESSION_COOKIE_SECURE`) i nagłówka `X-XSRF-TOKEN`. Używamy zwykłego `CsrfTokenRequestAttributeHandler`, a nie `csrf.spa()`, żeby wartość w ciele odpowiedzi była równa wartości cookie i nie powstawały zdublowane cookie. Token jest zapisywany także wtedy, gdy `GET /api/auth/csrf` rozwiąże token odroczony.
 5. `ApiCsrfRequestMatcher` realizuje kolejność z kontraktu: metody bezpieczne nie wymagają CSRF; `POST /api/auth/login` wymaga CSRF zawsze; mutacje z uwierzytelnionym principalem wymagają CSRF; mutacje anonimowe są przepuszczane do autoryzacji, żeby odpowiedź brzmiała `401`, a nie `403`.
 6. `ApiAuthenticationEntryPoint` zwraca `401 UNAUTHENTICATED`, a `ApiAccessDeniedHandler` zwraca `403 CSRF_INVALID` dla `CsrfException` i `403 ACCESS_DENIED` dla pozostałych odmów. Oba używają wspólnego formatu RFC 9457.
-7. `LoginRateLimiter` jest komponentem in-memory: maksymalnie 5 nieudanych prób w oknie 60 s dla pary IP + znormalizowany login. Szósta próba daje `429 RATE_LIMITED` i `Retry-After`; udane logowanie zeruje licznik. `Clock` jest wstrzykiwany, a liczba kluczy jest ograniczona (LRU), żeby mapa nie rosła bez końca.
+7. `LoginRateLimiter` jest komponentem in-memory: maksymalnie 5 nieudanych prób w oknie 60 s dla pary IP + znormalizowany login. Szósta próba daje `429 RATE_LIMITED` i `Retry-After`; udane logowanie zeruje licznik. `Clock` jest wstrzykiwany, a liczba kluczy jest ograniczona (LRU), żeby mapa nie rosła bez końca. Wygaśnięcie okna jest weryfikowane testem HTTP `AuthRateLimitWindowIntegrationTests`, który podstawia `@Primary MutableClock` i przesuwa czas o 61 s zamiast czekać rzeczywistą minutę.
 8. IP klienta pochodzi z `X-Real-IP` ustawianego przez nginx; poza Compose używany jest `request.getRemoteAddr()`. Nie ufamy dowolnemu `X-Forwarded-For` od klienta.
 9. `DaoAuthenticationProvider` ma `hideUserNotFoundExceptions=true` i `alwaysPerformAdditionalChecksOnUser=true`. Błędne hasło, nieistniejący login i konto wyłączone dają identyczne `401 INVALID_CREDENTIALS`; hasła i hashe nie trafiają do logów.
 10. Cookie sesji: `JSESSIONID`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` przez `SESSION_COOKIE_SECURE` (domyślnie `false` lokalnie). Sesja wygasa po 30 minutach, działa wyłącznie na cookie. Logout unieważnia tylko bieżącą sesję i czyści oba cookie (`Max-Age=0`).
@@ -506,7 +506,7 @@ Jednocześnie sesje i limity są przechowywane w pamięci, bo MVP działa jako j
 
 **Pozytywne:**
 
-- Kontrakt auth jest zaimplementowany i sprawdzony przez 41 testów backendu oraz rzeczywiste żądania przez nginx.
+- Kontrakt auth jest zaimplementowany i sprawdzony przez 42 testy backendu oraz rzeczywiste żądania przez nginx.
 - `401` ma pierwszeństwo przed `403`, a logowanie zawsze wymaga CSRF.
 - Rotacja sesji i tokenu ogranicza skutki przejęcia identyfikatora.
 - Błędy logowania nie ujawniają istnienia konta ani stanu `enabled`.

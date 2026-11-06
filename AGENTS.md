@@ -8,11 +8,11 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-06)
 
-- Ostatni commit funkcjonalny: `fb2c9b5` — ZR-08 (logowanie, sesja i CSRF); `main == origin/main`, drzewo czyste.
-- Ukończone: ZR-01…ZR-08 (zakres/ADR, szkielet backendu, schemat i migracje, kontrakt API, szkielety repo, Compose, encje JPA, hashowanie i konta demo, logowanie/sesja/CSRF).
+- Ostatni commit funkcjonalny: `a372022` — ZR-09 (test wygaśnięcia okna limitera); `main == origin/main`, drzewo czyste.
+- Ukończone: ZR-01…ZR-09 (zakres/ADR, szkielet backendu, schemat i migracje, kontrakt API, szkielety repo, Compose, encje JPA, hashowanie i konta demo, logowanie/sesja/CSRF, test okna limitera).
 - Działa: `GET /api/auth/csrf`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`, rotacja sesji i CSRF, limiter 5/60 s, błędy RFC 9457, `413`/`415`, `X-Request-Id`.
 - **Nie ma jeszcze** `CryptoService`, endpointów `crypto` i `messages`, limitów szyfrowania/deszyfrowania oraz frontendu logowania. Anonimowe `GET /api/messages` zwraca `401`; z sesją zwróci `404`, bo endpoint nadal nie istnieje.
-- Testy: 41/41 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`). Brak testów E2E, CI i `docs/PERFORMANCE.md`.
+- Testy: 42/42 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`). Brak testów E2E, CI i `docs/PERFORMANCE.md`.
 
 ## Najpierw przeczytaj
 
@@ -120,6 +120,7 @@ docker compose exec -T db psql -U encryption -d encryption -c 'select username, 
 - **Kolejność filtrów:** `ApiRequestHeadersFilter` ma `HIGHEST_PRECEDENCE` (413/415 przed auth), a `ApiCsrfRequestMatcher` przepuszcza anonimowe mutacje do autoryzacji, żeby `401` wyprzedziło `403`.
 - **`X-Real-IP` jest zaufane tylko za nginx** — nie ufaj `X-Forwarded-For` od klienta i nie zmieniaj resolvera bez proxy.
 - **Sesje i limiter są in-memory** — restart wymaga logowania, a wiele replik wymaga Redis/sticky sessions.
+- **Test okna limitera używa `MutableClock`** — nie dodawaj `Thread.sleep` ani rzeczywistego czekania 60 s; kontrolowany zegar jest podstawiany jako `@Primary` w `AuthRateLimitWindowIntegrationTests`.
 - **`SESSION_COOKIE_SECURE=false` lokalnie** — wdrożenie za HTTPS musi ustawić `true`, inaczej cookie nie zostanie odesłane lub będzie niebezpieczne.
 
 ## Następny krok

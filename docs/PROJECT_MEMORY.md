@@ -3,10 +3,10 @@
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
 - **Ostatnia aktualizacja:** 2026-11-06
-- **Ostatni commit funkcjonalny:** `fb2c9b5` — `feat(auth): logowanie, sesja i CSRF (ZR-08)`
+- **Ostatni commit funkcjonalny:** `a372022` — `test(auth): pokryj wygaśnięcie okna limitera (ZR-09)`
 - **Gałąź:** `main`, zsynchronizowana z `origin/main`
 - **Stan drzewa:** czysty
-- **Zadania ukończone:** ZR-01…ZR-08
+- **Zadania ukończone:** ZR-01…ZR-09
 - **Następne zadanie:** `CryptoService` i endpointy wiadomości
 
 ## 1. Cel projektu
@@ -32,7 +32,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 - Dwa konta demonstracyjne (`alice`, `bob`) seedowane tylko w profilu `local`.
 - Logowanie `POST /api/auth/login`, sesja serwerowa, `GET /api/auth/me`, `POST /api/auth/logout` i `GET /api/auth/csrf`.
 - Rotacja identyfikatora sesji i tokenu CSRF po logowaniu; logout unieważnia tylko bieżącą sesję.
-- Limit 5 nieudanych logowań na 60 s na parę IP + login, z `429` i `Retry-After`.
+- Limit 5 nieudanych logowań na 60 s na parę IP + login, z `429` i `Retry-After`; wygaśnięcie okna pokryte testem HTTP z kontrolowanym zegarem, bez rzeczywistego oczekiwania.
 - Błędy RFC 9457 z kodami `code`, `Cache-Control: no-store`, `X-Request-Id`, limit 65 536 B i `415` dla złego `Content-Type`.
 - Compose z trzema zdrowymi kontenerami, nginx jako jedyny publiczny punkt wejścia.
 - `/actuator/health` zwraca `200`; anonimowe `/api/messages` zwraca `401`.
@@ -50,7 +50,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 
 | Warstwa | Liczba | Uruchomienie |
 |---|---:|---|
-| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 41 | `cd backend && ./mvnw verify` |
+| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 42 | `cd backend && ./mvnw verify` |
 | Frontend (Vitest + Testing Library) | 3 | `cd frontend && npm test` |
 | E2E | 0 | brak |
 
@@ -71,6 +71,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-06 | `65504f2` | 2026-11-05 | Encje JPA, repozytoria owner-scoped, testy schematu i kursora | `./mvnw verify` — 7/7, `validate-schema.sh` |
 | ZR-07 | `eca5f3a` | 2026-11-05 | Argon2id, `AppUserDetailsService`, konta demo tylko w profilu `local`, migracja `V3` (komentarz kolumny) | `./mvnw verify` — 17/17, Compose, psql |
 | ZR-08 | `fb2c9b5` | 2026-11-06 | Logowanie, sesja, CSRF, `/me`, logout, rotacja, limiter, RFC 9457, limity transportu | `./mvnw verify` — 41/41, curl przez nginx, Compose |
+| ZR-09 | `a372022` | 2026-11-06 | Test HTTP wygaśnięcia okna limitera z kontrolowanym `Clock`; bez rzeczywistego oczekiwania 60 s | `./mvnw spotless:check verify` — 42/42, `AuthRateLimitWindowIntegrationTests` 1/1 |
 
 ### ZR-01 — zakres i decyzje
 
@@ -170,6 +171,25 @@ limit prób                     -> 5x 401, 6. próba 429 + Retry-After: 60
 błędne dane                    -> identyczne 401 poza traceId
 walidacja/transport            -> 400, 413, 415, 401 dla anonimowego /api/unknown
 Compose                        -> 3 kontenery healthy; publiczne tylko 3000:80
+```
+
+### ZR-09 — weryfikacja wygaśnięcia okna limitera
+
+- `AuthRateLimitWindowIntegrationTests` przechodzi pełną ścieżkę HTTP: CSRF, pięć nieudanych logowań, szósta próba i ponowne logowanie po wygaśnięciu okna.
+- Test podstawia `@Primary MutableClock` przez zagnieżdżoną `@TestConfiguration`, więc `LoginRateLimiter` widzi kontrolowany czas zamiast zegara systemowego.
+- Po pięciu próbach `401 INVALID_CREDENTIALS` szósta zwraca `429 RATE_LIMITED` z `Retry-After: 60`.
+- Przesunięcie zegara o `WINDOW + 1 s` (61 s) pozwala zalogować się poprawnie (`200`, `username=alice`); nie ma `Thread.sleep` ani rzeczywistego czekania.
+- Nagłówek `X-Real-IP` jest ustawiony na stały adres, żeby klucz limitera był deterministyczny.
+- Semantyka limitera i kod produkcyjny pozostają bez zmian; zadanie dodaje wyłącznie test i dokumentację.
+
+Weryfikacja ZR-09:
+
+```text
+./mvnw -Dtest=AuthRateLimitWindowIntegrationTests test -> 1/1, BUILD SUCCESS
+./mvnw spotless:check verify -> 42/42, BUILD SUCCESS
+5 nieudanych logowań         -> 401 INVALID_CREDENTIALS
+6. próba                     -> 429 RATE_LIMITED, Retry-After: 60
+zegar +61 s                  -> 200, username=alice
 ```
 
 ## 4. Architektura i układ repozytorium
@@ -391,7 +411,7 @@ Kolejność rekomendowana:
 Warunki wejścia do kolejnego zadania:
 
 - drzewo czyste i `main == origin/main`,
-- 41/41 testów backendu i 3/3 frontendu,
+- 42/42 testów backendu i 3/3 frontendu,
 - Compose z trzema zdrowymi kontenerami,
 - dokumentacja i ADR zaktualizowane w tym samym commicie,
 - wpis do Notion z rzeczywistym hashem commita i wynikami komend.
