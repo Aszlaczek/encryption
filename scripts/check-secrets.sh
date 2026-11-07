@@ -47,17 +47,25 @@ scan "klucz AWS" 'AKIA[0-9A-Z]{16}'
 scan "klucz Google API" 'AIza[0-9A-Za-z_-]{35}'
 scan "niepuste APP_CRYPTO_KEY" 'APP_CRYPTO_KEY=[A-Za-z0-9+/]{40,}={0,2}'
 
-# The Compose default is a public, all-zero demo key, not a secret. It may exist
-# only in docker-compose.yml and the published AES test vector in docs/API.md
-# (and this script); anywhere else it is a mistake.
+# The public all-zero demo key may exist only in the published AES test vector
+# in docs/API.md (and this script). It must never be used as a runtime default.
 demo_key='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 demo_key_matches="$(git grep --untracked -nF -e "$demo_key" -- . \
-    ':!docker-compose.yml' \
     ':!docs/API.md' \
     ':!scripts/check-secrets.sh' || true)"
 if [ -n "$demo_key_matches" ]; then
     printf '%s\n' "$demo_key_matches" >&2
-    fail "klucz demo poza docker-compose.yml"
+    fail "klucz demo poza docs/API.md"
+fi
+
+# The runtime key must live in an ignored directory and never be tracked.
+if ! git check-ignore -q .secrets/crypto.key; then
+    fail ".secrets/crypto.key nie jest ignorowany przez Git"
+fi
+tracked_secrets="$(git ls-files | grep -E '(^|/)\.secrets/|\.(key|pem)$' || true)"
+if [ -n "$tracked_secrets" ]; then
+    printf '%s\n' "$tracked_secrets" >&2
+    fail "trackowane pliki kluczy: ${tracked_secrets}"
 fi
 
 database_passwords="$(git grep --untracked -nIE '^(POSTGRES_PASSWORD|DB_PASSWORD)=[^[:space:]]+' -- . \

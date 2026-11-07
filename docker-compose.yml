@@ -26,13 +26,16 @@ services:
       DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-encryption}
       DB_USERNAME: ${POSTGRES_USER:-encryption}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
-      # Demo-only zero key. A real key can be supplied through .env or the shell.
-      APP_CRYPTO_KEY: ${APP_CRYPTO_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+      # The key is mounted as a file secret, never passed through the environment.
+      APP_CRYPTO_KEY_ID: ${APP_CRYPTO_KEY_ID:-k1}
+      APP_CRYPTO_KEY_FILE: /run/secrets/crypto_key
       # The local profile seeds the two public demo accounts. Override to disable them.
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
       # Set to true behind HTTPS so JSESSIONID and XSRF-TOKEN get the Secure flag.
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+    secrets:
+      - crypto_key
     depends_on:
       db:
         condition: service_healthy
@@ -69,6 +72,10 @@ services:
 
 volumes:
   pgdata:
+
+secrets:
+  crypto_key:
+    file: ${CRYPTO_KEY_FILE:-./.secrets/crypto.key}
 
 networks:
   edge: {}

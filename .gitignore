@@ -10,6 +10,7 @@
 .env
 .env.*
 !.env.example
+.secrets/
 
 # Java / Maven
 backend/target/
