@@ -2,11 +2,11 @@
 
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
-- **Ostatnia aktualizacja:** 2026-11-06
-- **Ostatni commit funkcjonalny:** `a372022` — `test(auth): pokryj wygaśnięcie okna limitera (ZR-09)`
+- **Ostatnia aktualizacja:** 2026-11-07
+- **Ostatni commit funkcjonalny:** `3712052` — `feat(crypto): dodaj konfigurację i sekret klucza AES (ZR-10)`
 - **Gałąź:** `main`, zsynchronizowana z `origin/main`
 - **Stan drzewa:** czysty
-- **Zadania ukończone:** ZR-01…ZR-09
+- **Zadania ukończone:** ZR-01…ZR-10
 - **Następne zadanie:** `CryptoService` i endpointy wiadomości
 
 ## 1. Cel projektu
@@ -33,6 +33,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 - Logowanie `POST /api/auth/login`, sesja serwerowa, `GET /api/auth/me`, `POST /api/auth/logout` i `GET /api/auth/csrf`.
 - Rotacja identyfikatora sesji i tokenu CSRF po logowaniu; logout unieważnia tylko bieżącą sesję.
 - Limit 5 nieudanych logowań na 60 s na parę IP + login, z `429` i `Retry-After`; wygaśnięcie okna pokryte testem HTTP z kontrolowanym zegarem, bez rzeczywistego oczekiwania.
+- Klucz AES-256 generowany jednorazowo do `.secrets/crypto.key`, montowany tylko do backendu jako sekret Compose; walidacja 32 B i `keyId=k1` przy starcie, brak lub błąd blokuje start.
 - Błędy RFC 9457 z kodami `code`, `Cache-Control: no-store`, `X-Request-Id`, limit 65 536 B i `415` dla złego `Content-Type`.
 - Compose z trzema zdrowymi kontenerami, nginx jako jedyny publiczny punkt wejścia.
 - `/actuator/health` zwraca `200`; anonimowe `/api/messages` zwraca `401`.
@@ -50,7 +51,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 
 | Warstwa | Liczba | Uruchomienie |
 |---|---:|---|
-| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 42 | `cd backend && ./mvnw verify` |
+| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 57 | `cd backend && ./mvnw verify` |
 | Frontend (Vitest + Testing Library) | 3 | `cd frontend && npm test` |
 | E2E | 0 | brak |
 
@@ -72,6 +73,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-07 | `eca5f3a` | 2026-11-05 | Argon2id, `AppUserDetailsService`, konta demo tylko w profilu `local`, migracja `V3` (komentarz kolumny) | `./mvnw verify` — 17/17, Compose, psql |
 | ZR-08 | `fb2c9b5` | 2026-11-06 | Logowanie, sesja, CSRF, `/me`, logout, rotacja, limiter, RFC 9457, limity transportu | `./mvnw verify` — 41/41, curl przez nginx, Compose |
 | ZR-09 | `a372022` | 2026-11-06 | Test HTTP wygaśnięcia okna limitera z kontrolowanym `Clock`; bez rzeczywistego oczekiwania 60 s | `./mvnw spotless:check verify` — 42/42, `AuthRateLimitWindowIntegrationTests` 1/1 |
+| ZR-10 | `3712052` | 2026-11-07 | Generacja klucza AES, sekret plikowy tylko w backendzie, walidacja 32 B i `keyId=k1`, blokada startu | `./mvnw spotless:check verify` — 57/57, Compose, restart, brak/błędny klucz |
 
 ### ZR-01 — zakres i decyzje
 
@@ -194,6 +196,28 @@ curl przez nginx :3000       -> 5x 401, 6. próba 429 + Retry-After: 60
 po 61 s przez nginx          -> 200, username=alice
 ```
 
+### ZR-10 — konfiguracja i trwałość klucza AES
+
+- `scripts/generate-crypto-key.sh` generuje jednorazowo `.secrets/crypto.key` (32 B, base64, mode 600) i odmawia nadpisania.
+- Compose montuje plik jako sekret `crypto_key` tylko do backendu pod `/run/secrets/crypto_key`; `db` i `frontend` nie mają tego montażu, a `APP_CRYPTO_KEY` nie jest przekazywany przez `environment`.
+- `CryptoProperties` wiąże `app.crypto.key-id`, `app.crypto.key-file` i `app.crypto.key`. `CryptoKey` waliduje base64, dokładnie 32 B i `keyId=k1`; `CryptoConfiguration` tworzy bean eager, więc błąd blokuje start.
+- `APP_CRYPTO_KEY_FILE` jest preferowane; `APP_CRYPTO_KEY` pozostaje fallbackiem dla lokalnego uruchomienia i testów.
+- Testy `CryptoKeyTests` (10) i `CryptoKeyStartupTests` (5) pokrywają poprawne źródła, brak klucza, zły base64, 16/33 B, nieznany `keyId`, brak pliku i brak wycieku klucza w `toString`.
+- `.secrets/` jest ignorowany przez Git i wykluczony z kontekstu obrazu; `check-secrets.sh` pilnuje braku trackowanych plików kluczy.
+
+Weryfikacja ZR-10:
+
+```text
+./scripts/generate-crypto-key.sh -> 32 B po dekodowaniu, mode 600; drugi raz exit 1
+./mvnw spotless:check verify     -> 57/57, BUILD SUCCESS
+docker compose config            -> sekret tylko backend; brak APP_CRYPTO_KEY w environment
+docker compose up -d --build     -> 3 kontenery healthy; log: Crypto key loaded for keyId=k1 (32 bytes)
+restart i down/up                -> sha256 sekretu bez zmian; kontenery healthy
+brak źródła klucza               -> exit 1; czytelny błąd startu
+16 B / keyId=k2                  -> exit 1; walidacja długości / znanego keyId
+db, frontend, obraz bez Compose  -> brak /run/secrets/crypto_key
+```
+
 ## 4. Architektura i układ repozytorium
 
 ```text
@@ -221,7 +245,7 @@ Backend stosuje podział package-by-feature:
 - `auth/` — `AppUser`, `AppUserPrincipal`, repozytorium, normalizacja, konta demo, `AuthService`, `LogoutService`, limiter,
 - `auth/api/` — DTO i kontroler `/api/auth`,
 - `message/` — `Message`, `MessageRepository`, w przyszłości serwis i kontroler,
-- `crypto/` — obecnie tylko pakiet; docelowo AES-256-GCM i format pakietu,
+- `crypto/` — konfiguracja i walidacja klucza AES (`CryptoProperties`, `CryptoKey`); docelowo AES-256-GCM i format pakietu,
 - `common/security/` — `PasswordEncoderConfig`, `SecurityFilterChain`, CSRF, obsługa `401`/`403`,
 - `common/web/` — RFC 9457, limity transportu, nagłówki, walidatory.
 
@@ -304,12 +328,15 @@ AAD:    v1:<ownerId>:<keyId>
 
 ## 8. Inwentarz testów
 
-### Backend — 41 testów
+### Backend — 57 testów
 
 | Klasa | Liczba | Co sprawdza |
 |---|---:|---|
 | `PersistenceIntegrationTests` | 7 | migracje i walidacja mapowania, powtarzalność schematu, UNIQUE loginu, FK/cascade, CHECK-i długości, scope repozytoriów, kursor |
 | `AuthIntegrationTests` | 15 | CSRF, login, `/me`, logout, rotacja sesji i tokenu, `401` przed `403`, nierozróżnialne błędy, walidacja, `413`/`415`, `429`, nieznane ścieżki, `X-Request-Id` |
+| `AuthRateLimitWindowIntegrationTests` | 1 | wygaśnięcie okna limitera z kontrolowanym `Clock`, bez rzeczywistego czekania |
+| `CryptoKeyTests` | 10 | klucz inline/plik, priorytet pliku, brak klucza, zły base64, 16/33 B, nieznany `keyId`, brak pliku, brak wycieku w `toString` |
+| `CryptoKeyStartupTests` | 5 | poprawny start i blokada kontekstu dla braku klucza, złego base64, złej długości i nieznanego `keyId` |
 | `DemoUserSeedingIntegrationTests` | 4 | dwa konta z hashami Argon2id, dopasowanie haseł, idempotencja bez nadpisywania, brak plaintextu w bazie, principal z `id` |
 | `LoginRateLimiterTests` | 5 | blokada szóstej próby, okno 60 s, reset po sukcesie, niezależność kluczy IP/login, starzenie wpisów |
 | `UsernameNormalizerTests` | 3 | trim/lowercase, puste dane, `null` |
@@ -344,6 +371,7 @@ AAD:    v1:<ownerId>:<keyId>
 | ADR-12 | JPA | `created_at` z bazy, jednokierunkowy `Message.owner`, repozytoria owner-scoped, brak encji w API |
 | ADR-13 | Argon2id i konta demo | Parametry Argon2id, BouncyCastle, hash 97 znaków, seed tylko w profilu `local`, limit hasła 128 B |
 | ADR-14 | Logowanie, sesja i CSRF | Ręczny login JSON, sesja serwerowa, rotacja sesji i CSRF, `401` przed `403`, limiter 5/60 s, cookie `HttpOnly`/`SameSite=Lax`, `SESSION_COOKIE_SECURE` |
+| ADR-15 | Klucz szyfrujący | Jednorazowa generacja 32 B, sekret plikowy tylko w backendzie, walidacja `keyId=k1`, brak fallbacku demo, utrata klucza = utrata danych, brak rotacji w MVP |
 
 ### Otwarte kwestie
 
@@ -397,6 +425,8 @@ Te zasady wynikają z ADR i nie powinny być zmieniane bez nowej decyzji:
 15. **Kolejność filtrów.** `ApiRequestHeadersFilter` ma `HIGHEST_PRECEDENCE`, żeby `413`/`415` wyprzedzały uwierzytelnienie. `ApiCsrfRequestMatcher` musi widzieć kontekst z sesji, ale anonimowe mutacje muszą przejść do autoryzacji, inaczej `403` wyprzedzi `401`.
 16. **Zaufanie `X-Real-IP`.** Nagłówek jest bezpieczny tylko dlatego, że backend nie jest publikowany, a nginx go nadpisuje. Poza Compose limiter używa `remoteAddr`.
 17. **Rotacja przed zapisem kontekstu.** Przy ponownym logowaniu najpierw `changeSessionId()`, potem zapis kontekstu i nowy CSRF; odwrotna kolejność pozostawia ważny stary identyfikator lub stary token.
+18. **Klucz AES jest sekretem plikowym.** `.secrets/crypto.key` jest ignorowany, montowany tylko do backendu i nigdy nie trafia do obrazu ani `environment`. Brak lub błąd klucza blokuje start; nie przywracaj zerowego klucza demo.
+19. **Utrata klucza jest nieodwracalna.** Brak automatycznej rotacji i odzyskiwania w MVP; zmiana pliku po zapisaniu wiadomości czyni je nieczytelnymi. Kopia zapasowa jest obowiązkiem operatora.
 
 ## 12. Następne kroki
 
@@ -404,16 +434,17 @@ Kolejność rekomendowana:
 
 1. ~~**Logowanie, sesja i CSRF**~~ — wykonane w ZR-08: `SecurityFilterChain`, endpointy auth, rotacja, limiter, RFC 9457.
 2. ~~**Walidacja i błędy**~~ — wykonane w ZR-08 dla auth i transportu; kolejne DTO dołączą własne walidatory.
-3. **Kryptografia** — `CryptoService` AES-256-GCM, `PackageCodec`, format pakietu, AAD, walidacja nonce/tag/długości; wektory testowe z `docs/API.md`.
-4. **Endpointy wiadomości** — create/list/get/delete, owner scope, `404` dla obcych zasobów, paginacja kursorowa, limity szyfrowania/deszyfrowania.
-5. **Frontend** — formularz logowania, obsługa CSRF, lista i edytor wiadomości, stany błędów, testy komponentów.
-6. **E2E** — Playwright: logowanie, izolacja użytkowników, CRUD, wylogowanie, błędy walidacji.
-7. **CI i wydajność** — workflow GitHub Actions, `docs/PERFORMANCE.md`, testy obciążeniowe i analiza pamięci Argon2id.
+3. ~~**Konfiguracja i trwałość klucza**~~ — wykonane w ZR-10: generacja, sekret Compose tylko w backendzie, walidacja startowa, ADR-15.
+4. **Kryptografia** — `CryptoService` AES-256-GCM, `PackageCodec`, format pakietu, AAD, walidacja nonce/tag/długości; wektory testowe z `docs/API.md`.
+5. **Endpointy wiadomości** — create/list/get/delete, owner scope, `404` dla obcych zasobów, paginacja kursorowa, limity szyfrowania/deszyfrowania.
+6. **Frontend** — formularz logowania, obsługa CSRF, lista i edytor wiadomości, stany błędów, testy komponentów.
+7. **E2E** — Playwright: logowanie, izolacja użytkowników, CRUD, wylogowanie, błędy walidacji.
+8. **CI i wydajność** — workflow GitHub Actions, `docs/PERFORMANCE.md`, testy obciążeniowe i analiza pamięci Argon2id.
 
 Warunki wejścia do kolejnego zadania:
 
 - drzewo czyste i `main == origin/main`,
-- 42/42 testów backendu i 3/3 frontendu,
+- 57/57 testów backendu i 3/3 frontendu,
 - Compose z trzema zdrowymi kontenerami,
 - dokumentacja i ADR zaktualizowane w tym samym commicie,
 - wpis do Notion z rzeczywistym hashem commita i wynikami komend.

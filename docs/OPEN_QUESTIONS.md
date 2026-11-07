@@ -26,8 +26,8 @@ Stan na **2026-11-06**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q10 | Ochrona CSRF | Cookie `XSRF-TOKEN` + nagłówek `X-XSRF-TOKEN`; odświeżanie po logowaniu | Przyjęte | Testy R02/R06 |
 | Q11 | Limity prób | Login 5 nieudanych/min na IP+login; deszyfrowanie 30/min; szyfrowanie 60/min; oba endpointy danej operacji łącznie | Przyjęte | Testy `429` |
 | Q12 | Limity danych | Wiadomość 10 000 punktów kodowych / 40 000 B UTF-8; ciphertext 40 000 B; pakiet 56 000 znaków; request 65 536 B (64 KiB) | Przyjęte | Walidacja, R09 |
-| Q13 | Klucz szyfrujący | 32 bajty base64 z `APP_CRYPTO_KEY`; `key_id=k1`; walidacja przy starcie | Przyjęte | Bezpieczeństwo, R03 |
-| Q14 | Domyślny klucz w Compose | Tylko demo; produkcja wymaga własnego klucza | Przyjęte | Ryzyko wyłącznie demo |
+| Q13 | Klucz szyfrujący | 32 bajty base64 z pliku sekretu `APP_CRYPTO_KEY_FILE` (preferowane) lub `APP_CRYPTO_KEY` (lokalnie); `key_id=k1`; walidacja przy starcie; brak lub błąd blokuje start | Przyjęte | ADR-15, R03/R06 |
+| Q14 | Domyślny klucz w Compose | Brak fallbacku demo; Compose wymaga wygenerowanego `.secrets/crypto.key`; utrata klucza = utrata danych | Przyjęte | ADR-15, R05 |
 | Q15 | Rotacja kluczy | Poza MVP; `key_id=k1` i `format_version=1` rezerwują miejsce | Poza MVP | Przyszła migracja |
 | Q16 | HTTPS lokalnie | Brak; produkcja wymaga TLS i cookie `Secure` | Poza MVP | Środowisko demo |
 | Q17 | Kopie zapasowe i retencja | Brak; dane w wolumenie, `down -v` usuwa | Poza MVP | Środowisko demo |
@@ -55,7 +55,7 @@ Stan na **2026-11-06**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q39 | Cache i korelacja | `Cache-Control: no-store` na `/api/**`; `X-Request-Id` i `traceId` w błędach | Przyjęte | ADR-09, R06/R10 |
 | Q40 | Wersjonowanie API | Brak wersji w URL; zmiany additive, breaking wymaga `/api/v2`; pakiet ma własne `v1` | Przyjęte | ADR-09 |
 | Q41 | Toolchain i sekrety | Node 22.19, React 19.3.1, Vite 7.3.7, TS 6.0.3, Spring Boot 4.1.2 / Java 17, ESLint+Prettier, Spotless+Enforcer, `.env.example` i `check-secrets.sh` | Przyjęte | ADR-10, R01/R03/R10 |
-| Q42 | Topologia Docker | Tylko `3000:80` publiczne; backend i db wewnętrzne; sieci `edge`/`data`; wolumen `pgdata`; klucz demo nadpisywalny z `.env` | Przyjęte | ADR-11, R05 |
+| Q42 | Topologia Docker | Tylko `3000:80` publiczne; backend i db wewnętrzne; sieci `edge`/`data`; wolumen `pgdata`; klucz AES jako sekret plikowy tylko w backendzie | Przyjęte | ADR-11/ADR-15, R05 |
 | Q43 | Mapowanie JPA i repozytoria | `created_at` z bazy przez `@Generated`; relacja jednokierunkowa `Message.owner`; repozytoria owner-scoped z kursorem; encje poza API; `ddl-auto=validate` | Przyjęte | ADR-12, R04/R06 |
 | Q44 | Źródło i profil kont demo | `application-local.properties`; seed tylko przy profilu `local`; Compose domyślnie `local`, nadpisywalny przez `SPRING_PROFILES_ACTIVE`; poza `local` brak seedu | Przyjęte | ADR-13, R02/R06 |
 | Q45 | Logowanie, sesja i CSRF | Ręczny login JSON; `JSESSIONID` `HttpOnly`/`SameSite=Lax`/30 min; `XSRF-TOKEN` + `X-XSRF-TOKEN`; rotacja sesji i tokenu po logowaniu; login zawsze wymaga CSRF; `401` przed `403`; limiter 5 nieudanych/60 s na IP+login, wygaśnięcie okna testowane kontrolowanym zegarem; `Secure` przez `SESSION_COOKIE_SECURE` | Przyjęte | ADR-14, R02/R06 |

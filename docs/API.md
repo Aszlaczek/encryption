@@ -842,7 +842,7 @@ Błędy 1–3, 5, 7–8 → `400 INVALID_PACKAGE_FORMAT`. Błąd 4 → `400 UNSU
 ### 9.6 Szyfrowanie i deszyfrowanie
 
 - Algorytm: AES-256-GCM.
-- Klucz: 32 B z `APP_CRYPTO_KEY` (base64), walidowany przy starcie.
+- Klucz: 32 B z pliku sekretu `APP_CRYPTO_KEY_FILE` (preferowane) lub `APP_CRYPTO_KEY` (lokalnie), base64; walidowany przy starcie razem z `keyId=k1`.
 - Nonce: 12 B z CSPRNG, nowy dla każdej operacji szyfrowania.
 - Tag: 128 bitów.
 - Brak kompresji, paddingu i dodatkowego opakowania.

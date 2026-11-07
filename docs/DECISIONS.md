@@ -12,6 +12,8 @@ Dokument zbiera decyzje przyjęte w ramach zadania rekrutacyjnego. Numeracja jes
 | [ADR-11](#adr-11--topologia-docker-compose) | Topologia Docker Compose | Accepted | 2026-11-05 |
 | [ADR-12](#adr-12--mapowanie-jpa-i-repozytoria) | Mapowanie JPA i repozytoria | Accepted | 2026-11-05 |
 | [ADR-13](#adr-13--argon2id-i-konta-demo-w-profilu-local) | Argon2id i konta demo w profilu local | Accepted | 2026-11-05 |
+| [ADR-14](#adr-14--logowanie-sesja-i-csrf) | Logowanie, sesja i CSRF | Accepted | 2026-11-06 |
+| [ADR-15](#adr-15--zarządzanie-kluczem-szyfrującym) | Zarządzanie kluczem szyfrującym | Accepted | 2026-11-07 |
 
 ---
 
@@ -35,7 +37,7 @@ Bez jednoznacznej decyzji pojawiłyby się niejawne założenia dotyczące tego,
    - algorytm AES-256-GCM,
    - losowy nonce 12 bajtów dla każdej operacji,
    - tag uwierzytelniający 128 bitów,
-   - klucz 32 bajty przechowywany przez backend i ładowany z `APP_CRYPTO_KEY`.
+   - klucz 32 bajty przechowywany przez backend i ładowany z pliku sekretu `APP_CRYPTO_KEY_FILE` (preferowane) lub `APP_CRYPTO_KEY` (lokalnie); szczegóły w ADR-15.
 4. Backend przetwarza tekst jawny. **Nie jest to E2EE.**
 5. Wszystkie operacje odczytu, deszyfrowania i usuwania są filtrowane po `owner_id`. Próba dostępu do cudzego zasobu zwraca `404`, aby nie ujawniać jego istnienia.
 6. Pakiet szyfrogramu jest powiązany z właścicielem i kluczem przez AAD w postaci `v1:<ownerId>:<keyId>`. Inne konto nie odszyfruje pakietu nawet po jego przechwyceniu.
@@ -306,7 +308,7 @@ R05 wymaga uruchomienia całego stosu jedną komendą, przy trzech kryteriach: p
 6. Healthchecki (`pg_isready`, `curl /actuator/health`, `wget /`), `depends_on: service_healthy` i `restart: unless-stopped`.
 7. nginx serwuje SPA z fallbackiem, proxuje `/api/` i `/actuator/health` do `backend:8080`, przekazuje `Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto` i ustawia `client_max_body_size 128k`.
 8. Przekroczenie limitu nginx zwraca jako `application/problem+json` z `code: PAYLOAD_TOO_LARGE`, a nie jako HTML.
-9. `APP_CRYPTO_KEY` pochodzi z `.env` lub środowiska; gdy go brak, Compose używa stałego zerowego klucza demo. Klucz demo jest jawny i przeznaczony wyłącznie do demonstracji.
+9. `APP_CRYPTO_KEY` pochodzi z `.env` lub środowiska; gdy go brak, Compose używa stałego zerowego klucza demo. Klucz demo jest jawny i przeznaczony wyłącznie do demonstracji. **Zmienione przez ADR-15:** Compose wymaga pliku sekretu `.secrets/crypto.key`; brak klucza blokuje start, a materiał klucza nie jest przekazywany przez environment.
 10. `POSTGRES_*` mają domyślne wartości demo (`change-me`), więc start nie wymaga `.env`.
 11. Testy nie są uruchamiane w obrazie (`-DskipTests`), bo Testcontainers wymagają Dockera hosta; pozostają osobną kontrolą.
 12. TLS, CI i implementacja endpointów są poza zakresem tego zadania.
@@ -326,6 +328,7 @@ R05 wymaga uruchomienia całego stosu jedną komendą, przy trzech kryteriach: p
 **Negatywne:**
 
 - Domyślne hasła i klucz są demonstracyjne; wymagają świadomej konfiguracji poza demo.
+- **Zmienione przez ADR-15:** klucz nie jest już demonstracyjny ani domyślny. Compose wymaga wygenerowanego pliku sekretu, a jego utrata uniemożliwia odszyfrowanie danych.
 - Debugowanie backendu wymaga `docker compose exec` albo sieci Compose.
 - Brak TLS i cookie `Secure` w lokalnym Compose.
 - Zmiana `APP_CRYPTO_KEY` po zapisaniu wiadomości uniemożliwia ich odszyfrowanie.
@@ -339,7 +342,7 @@ R05 wymaga uruchomienia całego stosu jedną komendą, przy trzech kryteriach: p
 - **Jedna sieć dla wszystkich usług** — frontend mógłby łączyć się z bazą; brak izolacji.
 - **`eclipse-temurin:17-jre-alpine`** — obraz jest publikowany tylko dla `linux/amd64`; na hoście `arm64` wymagałby emulacji.
 - **Uruchamianie testów w buildzie obrazu** — Testcontainers potrzebują Dockera hosta; build stałby się wolny i zależny od środowiska.
-- **Wymagany klucz w `.env`** — `docker compose up -d` bez konfiguracji kończyłby się błędem, wbrew kryterium uruchomienia.
+- **Wymagany klucz w `.env`** — `docker compose up -d` bez konfiguracji kończyłby się błędem, wbrew kryterium uruchomienia. **ADR-15 zmienia to świadomie:** klucz jest wymaganym plikiem sekretu, a pierwszy start wymaga jednorazowej generacji.
 - **Losowy klucz generowany przy starcie** — po restarcie stare wiadomości byłyby nieczytelne.
 - **TLS w Compose** — generowałby samopodpisane certyfikaty i szum; produkcja wymaga zewnętrznego terminatora TLS.
 
@@ -537,6 +540,65 @@ Jednocześnie sesje i limity są przechowywane w pamięci, bo MVP działa jako j
 ### Powiązane wymagania
 
 R02, R06, R10.
+
+---
+
+## ADR-15 — Zarządzanie kluczem szyfrującym
+
+### Status
+
+**Accepted** — 2026-11-07. Zastępuje demonstracyjny domyślny klucz z ADR-11 pkt 9.
+
+### Kontekst
+
+AES-256-GCM wymaga klucza 32-bajtowego. Klucz nie może być zapisany w repozytorium ani w obrazie, a jego przypadkowa zmiana lub utrata uniemożliwia odszyfrowanie istniejących wiadomości. MVP nie ma KMS, HSM ani automatycznej rotacji, więc potrzebny jest prosty, powtarzalny mechanizm: jednorazowa generacja, trwały plik poza Git i montaż tylko do backendu.
+
+Wcześniejszy Compose używał zerowego klucza demo, co nie spełnia wymagania „brak lub błędny klucz blokuje start”. Nowe wymaganie jest ważniejsze niż wygoda pierwszego uruchomienia.
+
+### Decyzja
+
+1. Klucz jest generowany jednorazowo przez `./scripts/generate-crypto-key.sh` jako 32 losowe bajty z `openssl rand -base64 32`.
+2. Domyślna lokalizacja to `.secrets/crypto.key`; katalog ma mode 700, plik mode 600. Skrypt odmawia nadpisania istniejącego pliku.
+3. `.secrets/` jest ignorowany przez Git i wykluczony z kontekstu obrazu backendu. Materiał klucza nigdy nie trafia do repozytorium ani do warstwy obrazu.
+4. Docker Compose używa sekretu plikowego `crypto_key` i montuje go **tylko do usługi `backend`** jako `/run/secrets/crypto_key`. `db` i `frontend` nie mają tego montażu, a `APP_CRYPTO_KEY` nie jest przekazywany przez `environment`.
+5. Backend preferuje `APP_CRYPTO_KEY_FILE`. `APP_CRYPTO_KEY` pozostaje wyłącznie jako wygodny fallback dla lokalnego uruchomienia i testów; Compose go nie ustawia.
+6. `CryptoProperties` wiąże `app.crypto.key-id`, `app.crypto.key-file` i `app.crypto.key`. `CryptoKey` waliduje base64, dokładnie 32 bajty oraz znany `keyId`.
+7. Jedynym znanym `keyId` w MVP jest `k1`. Nieznany identyfikator, brak klucza, brak pliku, zły base64 lub zła długość powodują wyjątek podczas tworzenia beana i blokują start aplikacji.
+8. Komunikaty błędów i `toString()` nie zawierają materiału klucza. Log startu zawiera wyłącznie `keyId` i długość.
+9. Restart i ponowne utworzenie kontenera nie generują nowego klucza; plik pozostaje na hoście i jest montowany ponownie.
+10. Brak automatycznej rotacji w MVP. Zmiana klucza jest operacją świadomą i oznacza brak dostępu do danych zaszyfrowanych starym kluczem. Kopia zapasowa pliku jest obowiązkiem operatora.
+11. Testy używają deterministycznego, nieprodukcyjnego klucza w `src/test/resources/config/application.properties`; nie jest to sekret i nie jest używany poza testami.
+
+### Konsekwencje
+
+**Pozytywne:**
+
+- Brak lub błędny klucz jest wykrywany przed obsługą ruchu.
+- Klucz nie jest widoczny w `docker inspect` jako zmienna środowiskowa, w Git ani w obrazie.
+- Restart zachowuje ten sam klucz, więc istniejące wiadomości pozostają czytelne.
+- Jednoznaczny `keyId=k1` przygotowuje miejsce na przyszłą rotację i wiele kluczy.
+- Testy startowe nie wymagają ręcznego czekania ani zewnętrznego KMS.
+
+**Negatywne:**
+
+- Pierwszy start Compose wymaga dodatkowego kroku: wygenerowania klucza.
+- Utrata `.secrets/crypto.key` jest nieodwracalna dla istniejących danych; MVP nie ma odzyskiwania ani rotacji.
+- Sekret jest plikiem na hoście; jego bezpieczeństwo zależy od uprawnień i backupu operatora.
+- `APP_CRYPTO_KEY` jako fallback jest mniej bezpieczny niż plik i nie jest używany w Compose.
+- Brak KMS/HSM i wielu aktywnych kluczy.
+
+### Odrzucone alternatywy
+
+- **Zerowy klucz demo jako domyślny** — nie spełnia wymagania blokady startu i zachęca do przypadkowego użycia w demo.
+- **Klucz w `.env` lub `environment`** — widoczny w konfiguracji procesu i łatwiejszy do wycieku; plik sekretu jest lepiej izolowany.
+- **Losowy klucz przy każdym starcie** — po restarcie istniejące wiadomości byłyby nieczytelne.
+- **Klucz w obrazie** — narusza wymaganie „poza obrazem” i utrudnia rotację.
+- **Automatyczna rotacja w MVP** — wymaga wielu aktywnych kluczy, migracji pakietów i polityki backupu; poza zakresem.
+- **KMS/HSM** — nadmiar dla jednej instancji demonstracyjnej.
+
+### Powiązane wymagania
+
+R03, R05, R06.
 
 ---
 

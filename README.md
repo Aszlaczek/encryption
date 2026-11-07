@@ -2,7 +2,7 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-09 — logowanie, sesja serwerowa i CSRF działają zgodnie z [`docs/API.md`](docs/API.md). Dostępne są `GET /api/auth/csrf`, `POST /api/auth/login`, `GET /api/auth/me` i `POST /api/auth/logout`, z rotacją identyfikatora sesji i tokenu CSRF po logowaniu, limitem 5 nieudanych prób na 60 s na parę IP + login oraz błędami RFC 9457 z kolejnością `401` przed `403`. Wygaśnięcie okna limitera jest pokryte testem HTTP z kontrolowanym zegarem, bez rzeczywistego oczekiwania. Testy backendu: **42/42**. Endpointy `crypto` i `messages`, frontend logowania, testy E2E i CI pozostają do wykonania.
+> **Status:** ZR-10 — logowanie, sesja serwerowa i CSRF działają zgodnie z [`docs/API.md`](docs/API.md). Dostępne są `GET /api/auth/csrf`, `POST /api/auth/login`, `GET /api/auth/me` i `POST /api/auth/logout`, z rotacją identyfikatora sesji i tokenu CSRF po logowaniu, limitem 5 nieudanych prób na 60 s na parę IP + login oraz błędami RFC 9457 z kolejnością `401` przed `403`. Klucz AES-256 jest generowany jednorazowo do ignorowanego pliku, montowany tylko do backendu jako sekret i walidowany przy starcie (32 B, `keyId=k1`); brak lub błąd klucza blokuje start. Testy backendu: **57/57**. Endpointy `crypto` i `messages`, frontend logowania, testy E2E i CI pozostają do wykonania.
 
 **Repozytorium:** <https://github.com/Aszlaczek/encryption>
 
@@ -114,7 +114,7 @@ Pozostałe ścieżki `/api/**` wymagają uwierzytelnienia. Logowanie jest public
 - Tag uwierzytelniający: 128 bitów (16 bajtów).
 - Format pakietu: `v1.<key_id>.<base64url(nonce)>.<base64url(ciphertext)>.<base64url(tag)>`.
 - AAD: `v1:<ownerId>:<keyId>` — wiąże pakiet z właścicielem i kluczem.
-- Klucz: 32 bajty z `APP_CRYPTO_KEY` w formacie base64; walidowany przy starcie aplikacji.
+- Klucz: 32 bajty z pliku sekretu `APP_CRYPTO_KEY_FILE` (preferowane, montowane tylko do backendu) lub z `APP_CRYPTO_KEY` (lokalnie); walidowany przy starcie razem z `keyId=k1`.
 - `key_id` (np. `k1`) i `format_version=1` są zapisywane w bazie i w kopercie.
 - Brak rotacji kluczy w MVP; `key_id` rezerwuje miejsce na przyszłe wersjonowanie.
 
@@ -170,10 +170,10 @@ node scripts/validate-api-contract.mjs
 |---|---|---|
 | R01 | Frontend JavaScript z React/Angular | Szkielet React 19 + Vite 7 + TypeScript 6; `npm run build` oraz 3 testy komponentów (Vitest + RTL); E2E Playwright w kolejnym zadaniu |
 | R02 | Logowanie i walidacja danych | Kontrakt logowania, sesji i CSRF w `docs/API.md`; `PasswordEncoder` Argon2id (16 MiB, 2 iteracje, salt 16 B, hash 32 B); `AppUserDetailsService` i `AppUserPrincipal`; konta demo tylko w profilu `local`; endpointy `csrf`, `login`, `me`, `logout`; rotacja sesji i CSRF; limit 5 nieudanych prób/60 s z testem wygaśnięcia okna na kontrolowanym zegarze; walidacja JSON, `413`, `415` i błędy RFC 9457; 16 testów integracyjnych auth + 7 jednostkowych; E2E w kolejnym zadaniu |
-| R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Spring Boot 4.1.2 / Java 17; `./mvnw verify` z Testcontainers PostgreSQL 16 i Flyway; kontrakt AES-256-GCM w `docs/API.md`; implementacja `CryptoService` w kolejnym zadaniu |
+| R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Spring Boot 4.1.2 / Java 17; `./mvnw verify` z Testcontainers PostgreSQL 16 i Flyway; kontrakt AES-256-GCM w `docs/API.md`; konfiguracja klucza AES-256 (`CryptoKey`, walidacja 32 B i `keyId=k1`) oraz testy startowe; implementacja `CryptoService` w kolejnym zadaniu |
 | R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`–`V3` (V3 tylko komentarz), ograniczenia CHECK, FK i indeks; encje `AppUser`/`Message` i repozytoria owner-scoped z zapytaniem kursorowym; 7 testów integracyjnych na Testcontainers PostgreSQL 16 (`./mvnw verify`); walidacja schematu (`./scripts/validate-schema.sh`); kontrakt CRUD i paginacji w `docs/API.md` |
-| R05 | Uruchomienie lokalne w Dockerze | Trzy usługi Compose z healthcheckami; `docker compose down -v` → `docker compose up -d --build` kończy się `healthy`; tylko `3000:80` jest publiczne; backend łączy się z `db:5432`; wolumen `encryption_pgdata` przeżywa restart |
-| R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Macierz statusów, katalog kodów, `404` dla obcych zasobów i limity w `docs/API.md`; `SecurityFilterChain` z kolejnością `401` przed `403`; CSRF wymagany dla logowania i mutacji zalogowanych; odrzucanie nieznanych pól JSON; limit rozmiaru żądania; `Cache-Control: no-store` i `X-Request-Id`; testy integracyjne błędów, walidacji, `413`/`415`, `429` i izolacji sesji |
+| R05 | Uruchomienie lokalne w Dockerze | Trzy usługi Compose z healthcheckami; jednorazowa generacja klucza (`./scripts/generate-crypto-key.sh`) → `docker compose up -d --build` kończy się `healthy`; sekret jest montowany tylko do backendu; tylko `3000:80` jest publiczne; backend łączy się z `db:5432`; wolumen `encryption_pgdata` przeżywa restart |
+| R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Macierz statusów, katalog kodów, `404` dla obcych zasobów i limity w `docs/API.md`; `SecurityFilterChain` z kolejnością `401` przed `403`; CSRF wymagany dla logowania i mutacji zalogowanych; odrzucanie nieznanych pól JSON; limit rozmiaru żądania; `Cache-Control: no-store` i `X-Request-Id`; walidacja klucza przy starcie i brak sekretu w Git/obrazie; testy integracyjne błędów, walidacji, `413`/`415`, `429` i izolacji sesji |
 | R07 | Responsywność | Strona główna responsywna od 320 px; zrzuty ekranu Playwright przy 360, 768 i 1280 px w kolejnym zadaniu |
 | R08 | Dostępność | Semantyczne nagłówki, landmarki, skip link i widoczny focus; skan axe w kolejnym zadaniu |
 | R09 | Wydajność | Paginacja, indeks `(owner_id, created_at desc, id desc)`, limity; pomiary `hey` i `EXPLAIN ANALYZE` w `docs/PERFORMANCE.md` |
@@ -253,8 +253,10 @@ Następnie w drugim terminalu:
 
 ```bash
 cd backend
-./mvnw spring-boot:run
+APP_CRYPTO_KEY_FILE="$PWD/../.secrets/crypto.key" ./mvnw spring-boot:run
 ```
+
+Klucz wygeneruj raz z katalogu głównego: `./scripts/generate-crypto-key.sh`. Bez klucza backend nie wystartuje.
 
 Build, testy i lint (bez uruchamiania serwera):
 
@@ -273,6 +275,7 @@ cd ../backend
 Sekrety:
 
 ```bash
+./scripts/generate-crypto-key.sh   # jednorazowo; odmawia nadpisania
 ./scripts/check-secrets.sh
 ```
 
@@ -283,6 +286,7 @@ Wymagany jest Docker z Compose. Cały stos opisuje `docker-compose.yml`.
 Pierwszy start lub przebudowa obrazów:
 
 ```bash
+./scripts/generate-crypto-key.sh   # tylko raz; plik .secrets/crypto.key
 docker compose up -d --build
 ```
 
@@ -309,11 +313,13 @@ Topologia:
 Konfiguracja:
 
 ```bash
-cp .env.example .env   # opcjonalnie; bez .env działają wartości demo
+cp .env.example .env   # opcjonalnie; bez .env działa ścieżka domyślna
 ```
 
-- `APP_CRYPTO_KEY` ustawiony w `.env` lub środowisku nadpisuje klucz demo. Bez niego Compose używa stałego **zerowego klucza demo** (wyłącznie do demonstracji).
-- Zmiana klucza po zapisaniu wiadomości uniemożliwi ich odszyfrowanie; rotacja kluczy jest poza MVP.
+- `./scripts/generate-crypto-key.sh` tworzy `.secrets/crypto.key` (base64, 32 B, mode 600). Plik jest ignorowany przez Git, nie wchodzi do obrazu i jest montowany **tylko do backendu** jako `/run/secrets/crypto_key`.
+- Compose nie przekazuje materiału klucza przez `environment`; ustawia wyłącznie `APP_CRYPTO_KEY_FILE=/run/secrets/crypto_key` i `APP_CRYPTO_KEY_ID=k1`.
+- Brak pliku, niepoprawny base64, długość inna niż 32 B lub nieznany `keyId` blokuje start backendu. `docker compose up` bez wygenerowanego klucza również kończy się błędem.
+- **Utrata klucza oznacza trwałą utratę dostępu do istniejących wiadomości.** Nie ma automatycznej rotacji ani odzyskiwania klucza w MVP. Zmiana klucza działa jak utrata — stare pakiety pozostają nieczytelne. Zrób kopię zapasową `.secrets/crypto.key` poza repozytorium.
 - `POSTGRES_*` mają domyślnie `change-me`; to również wartości wyłącznie demonstracyjne.
 - Bezpośredni dostęp do bazy: `docker compose exec db psql -U encryption -d encryption` (bez publikowania portu).
 
@@ -352,6 +358,7 @@ Konta są tworzone wyłącznie przy aktywnym profilu `local` (`application-local
 | Backend — hashowanie i konta demo | JUnit 5, Spring Security, Testcontainers | 10 testów: Argon2id i długość hasha, normalizacja loginu, seed w `local`, idempotencja, brak seedu poza `local`, principal z `id` |
 | Backend — logowanie, sesja i CSRF | JUnit 5, MockMvc, Spring Security, Testcontainers | `AuthIntegrationTests` — 15 testów: CSRF, login, `/me`, logout, rotacja sesji i tokenu, `401` przed `403`, nierozróżnialne błędne dane, walidacja, `413`/`415`, `429`, nieznane ścieżki, `X-Request-Id` |
 | Backend — wygaśnięcie okna limitera | JUnit 5, MockMvc, Testcontainers, kontrolowany `Clock` | `AuthRateLimitWindowIntegrationTests` — 1 test: 5× `401`, 6. próba `429` z `Retry-After`, przesunięcie zegara o 61 s i ponowne logowanie `200` bez rzeczywistego czekania |
+| Backend — konfiguracja i walidacja klucza | JUnit 5, `ApplicationContextRunner`, `@TempDir` | `CryptoKeyTests` (10) + `CryptoKeyStartupTests` (5): poprawny klucz inline/plik, priorytet pliku, brak klucza, zły base64, 16/33 B, nieznany `keyId`, brak pliku, brak wycieku klucza w `toString`, blokada startu kontekstu |
 | Backend — limiter i problem details | JUnit 5 | `LoginRateLimiterTests` (5), `AppUserPrincipalTests` (2), `ApiProblemFactoryTests` (2) |
 | Backend — format i higiena | Spotless, Enforcer | `cd backend && ./mvnw spotless:check verify` |
 | Schemat bazy i migracje | PostgreSQL 16, psql, Docker | `./scripts/validate-schema.sh` |
@@ -363,6 +370,24 @@ Konta są tworzone wyłącznie przy aktywnym profilu `local` (`application-local
 | Docker — czysty start | Docker Compose, healthchecki | `docker compose down -v && docker compose up -d --build` |
 | Wydajność | `hey`, `EXPLAIN ANALYZE` | opis w `docs/PERFORMANCE.md` |
 | CI | GitHub Actions | workflow w `.github/workflows/ci.yml` (kolejne zadanie) |
+
+Wynik ZR-10 (2026-11-07, JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16):
+
+```text
+./scripts/generate-crypto-key.sh -> .secrets/crypto.key, 32 B po dekodowaniu, mode 600
+drugie uruchomienie              -> exit 1; odmowa nadpisania
+./mvnw spotless:check verify     -> Tests run: 57, Failures: 0, Errors: 0, Skipped: 0; BUILD SUCCESS
+docker compose config            -> sekret crypto_key tylko w backendzie; brak APP_CRYPTO_KEY w environment
+docker compose up -d --build     -> 3 kontenery healthy
+log startu                       -> Crypto key loaded for keyId=k1 (32 bytes)
+restart backendu                 -> sha256 sekretu bez zmian; ponowny start healthy
+docker compose down + up -d      -> sha256 sekretu bez zmian; 3 kontenery healthy
+brak pliku / brak źródła         -> exit 1; "Brak klucza AES..." / "Nie można odczytać pliku klucza AES..."
+16 B                             -> exit 1; "Klucz AES musi mieć 32 bajty..."
+keyId=k2                         -> exit 1; "Nieznany keyId: k2; obsługiwany: k1"
+db i frontend                    -> brak /run/secrets/crypto_key
+obraz backendu bez Compose       -> brak /run/secrets/crypto_key
+```
 
 Wynik ZR-09 (2026-11-06, JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16):
 
@@ -440,7 +465,7 @@ psql \dt                                    -> app_users, messages, flyway_schem
 restart bez -v                              -> wiersz testowy i 2 migracje nadal w bazie
 drugi docker compose up -d                  -> OK
 413 przez nginx                             -> application/problem+json, PAYLOAD_TOO_LARGE
-klucz z .env                                -> nadpisany; po usunięciu .env wrócił demo
+klucz z .env (stan ZR-05)                  -> nadpisany; po usunięciu .env wrócił demo; od ZR-10 wymagany plik sekretu
 ```
 
 `/api/messages` zwraca `401`, bo endpointy nie są jeszcze zaimplementowane — to odpowiedź Spring Security, a nie nginx, co potwierdza log accessu (`401` po proxowaniu).
@@ -479,11 +504,11 @@ Testy negatywne obejmują w szczególności (część auth zrealizowana w ZR-08,
 ## Ograniczenia i otwarte kwestie
 
 - Aplikacja jest projektowana jako **jedna instancja**. Sesje i limity prób są przechowywane w pamięci; restart wymaga ponownego logowania.
-- Brak rotacji kluczy; `key_id=k1`, `format_version=1`.
-- Brak kopii zapasowych i polityki retencji danych.
+- Brak automatycznej rotacji kluczy; `key_id=k1`, `format_version=1`.
+- Brak kopii zapasowych i polityki retencji danych. Utrata `.secrets/crypto.key` oznacza trwałą utratę możliwości odszyfrowania istniejących wiadomości; nie ma mechanizmu odzyskiwania.
 - Lokalnie brak TLS; produkcja wymaga terminatora TLS i cookie `Secure`.
 - Brak tytułu wiadomości; lista identyfikuje wpisy datą i UUID. Dzięki temu w bazie nie ma tekstu jawnego użytkownika.
-- Domyślny klucz szyfrujący w Compose jest zerowy i służy tylko do demo; można go nadpisać przez `APP_CRYPTO_KEY`. Zmiana klucza po zapisaniu wiadomości uniemożliwi ich odszyfrowanie.
+- Domyślny klucz szyfrujący nie istnieje: Compose wymaga wygenerowanego `.secrets/crypto.key`. Zmiana lub utrata klucza po zapisaniu wiadomości uniemożliwi ich odszyfrowanie.
 - Domyślne hasło bazy (`change-me`) jest jawnie demonstracyjne; poza demo należy ustawić własne `POSTGRES_PASSWORD`.
 - Profil `local` jest domyślny w Compose, bo stos służy do demonstracji. Wdrożenie produkcyjne musi ustawić `SPRING_PROFILES_ACTIVE` na inny profil, żeby nie utworzyć kont demo.
 - Argon2id zużywa 16 MiB pamięci na weryfikację hasła; przy wielu równoległych logowaniach rośnie zapotrzebowanie na RAM.
@@ -511,6 +536,7 @@ Testy negatywne obejmują w szczególności (część auth zrealizowana w ZR-08,
 - [`ADR-12`](docs/DECISIONS.md#adr-12--mapowanie-jpa-i-repozytoria) — mapowanie JPA, `created_at` z bazy, repozytoria owner-scoped.
 - [`ADR-13`](docs/DECISIONS.md#adr-13--argon2id-i-konta-demo-w-profilu-local) — Argon2id, parametry, seed tylko w profilu `local`.
 - [`ADR-14`](docs/DECISIONS.md#adr-14--logowanie-sesja-i-csrf) — logowanie sesyjne, rotacja sesji i CSRF, kolejność `401`/`403`, limiter logowania i polityka cookie.
+- [`ADR-15`](docs/DECISIONS.md#adr-15--zarządzanie-kluczem-szyfrującym) — jednorazowa generacja, sekret tylko backendu, walidacja 32 B i `keyId=k1`, utrata klucza i brak rotacji.
 
 Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`](docs/DECISIONS.md). Szczegóły schematu: [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md). Kontrakt HTTP: [`docs/API.md`](docs/API.md).
 
