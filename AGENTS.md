@@ -8,11 +8,11 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-08)
 
-- Ostatni commit funkcjonalny: `01bcd76` — ZR-11 (`CryptoService` i `PackageCodec`); `main == origin/main`, drzewo czyste.
-- Ukończone: ZR-01…ZR-11 (zakres/ADR, szkielet backendu, schemat i migracje, kontrakt API, szkielety repo, Compose, encje JPA, hashowanie i konta demo, logowanie/sesja/CSRF, test okna limitera, klucz AES i sekret, AES-GCM i kodek pakietu).
+- Ostatni commit funkcjonalny: `TBD` — ZR-12 (testy kryptografii); `main == origin/main`, drzewo czyste.
+- Ukończone: ZR-01…ZR-12 (zakres/ADR, szkielet backendu, schemat i migracje, kontrakt API, szkielety repo, Compose, encje JPA, hashowanie i konta demo, logowanie/sesja/CSRF, test okna limitera, klucz AES i sekret, AES-GCM i kodek pakietu, testy jednostkowe kryptografii).
 - Działa: `GET /api/auth/csrf`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`, rotacja sesji i CSRF, limiter 5/60 s, błędy RFC 9457, `413`/`415`, `X-Request-Id`, walidacja klucza AES przy starcie (`32 B`, `keyId=k1`), sekret Compose tylko w backendzie oraz `CryptoService`/`PackageCodec` (AES-256-GCM, nonce 12 B, tag 128 bitów, AAD `v1:<ownerId>:<keyId>`, walidacja pakietu).
 - **Nie ma jeszcze** endpointów `crypto` i `messages`, DTO wiadomości, limitów szyfrowania/deszyfrowania oraz frontendu logowania. Anonimowe `GET /api/messages` zwraca `401`; z sesją zwróci `404`, bo endpoint nadal nie istnieje.
-- Testy: 97/97 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`). Brak testów E2E, CI i `docs/PERFORMANCE.md`.
+- Testy: 106/106 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`). Brak testów E2E, CI i `docs/PERFORMANCE.md`.
 
 ## Najpierw przeczytaj
 

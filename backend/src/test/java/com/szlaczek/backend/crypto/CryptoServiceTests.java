@@ -199,6 +199,103 @@ class CryptoServiceTests {
                 .hasMessageContaining("12 bajtów");
     }
 
+    @Test
+    void roundTripsUnicodeEmojiSpacesAndNewlines() {
+        List<String> values = List.of(
+                "Zażółć gęślą jaźń",
+                "🔐🔑🛡️",
+                "  leading and trailing spaces  ",
+                "line1\nline2\r\nline3\tend",
+                "漢字かなカナ한글",
+                "e\u0301");
+
+        for (String value : values) {
+            String packageValue = service.encryptPackage(value, OWNER_ID);
+
+            assertThat(service.decryptPackage(packageValue, OWNER_ID)).isEqualTo(value);
+            assertThat(codec.decode(packageValue).ciphertext())
+                    .hasSize(value.getBytes(StandardCharsets.UTF_8).length);
+        }
+    }
+
+    @Test
+    void usesUniqueNoncesForRepeatedEncryptionOfSameText() {
+        Set<String> nonces = new HashSet<>();
+        Set<String> packages = new HashSet<>();
+
+        for (int index = 0; index < 100; index++) {
+            String packageValue = service.encryptPackage(PLAINTEXT, OWNER_ID);
+            nonces.add(BASE64URL_ENCODER.encodeToString(codec.decode(packageValue).nonce()));
+            packages.add(packageValue);
+        }
+
+        assertThat(nonces).hasSize(100);
+        assertThat(packages).hasSize(100);
+    }
+
+    @Test
+    void rejectsTagFromAnotherCiphertext() {
+        EncryptedPayload first = service.encrypt(PLAINTEXT, OWNER_ID);
+        EncryptedPayload second = service.encrypt(PLAINTEXT + " inny", OWNER_ID);
+        EncryptedPayload mixed = new EncryptedPayload(
+                first.formatVersion(), first.keyId(), first.nonce(), first.ciphertext(), second.tag());
+
+        assertError(() -> service.decrypt(mixed, OWNER_ID), CryptoError.DECRYPT_FAILED);
+    }
+
+    @Test
+    void rejectsNonceFromAnotherCiphertext() {
+        EncryptedPayload first = service.encrypt(PLAINTEXT, OWNER_ID);
+        EncryptedPayload second = service.encrypt(PLAINTEXT + " inny", OWNER_ID);
+        EncryptedPayload mixed = new EncryptedPayload(
+                first.formatVersion(), first.keyId(), second.nonce(), first.ciphertext(), first.tag());
+
+        assertError(() -> service.decrypt(mixed, OWNER_ID), CryptoError.DECRYPT_FAILED);
+    }
+
+    @Test
+    void rejectsTamperedTagInPackage() {
+        EncryptedPayload vector = codec.decode(VECTOR_PACKAGE);
+        byte[] tag = vector.tag();
+        tag[0] ^= 1;
+
+        String tamperedPackage = codec.encode(
+                new EncryptedPayload(vector.formatVersion(), vector.keyId(), vector.nonce(), vector.ciphertext(), tag));
+
+        assertError(() -> service.decryptPackage(tamperedPackage, OWNER_ID), CryptoError.DECRYPT_FAILED);
+    }
+
+    @Test
+    void acceptsPlaintextAtUtf8AndCodePointBoundary() {
+        String plaintext = "🔐".repeat(10_000);
+        assertThat(plaintext.getBytes(StandardCharsets.UTF_8)).hasSize(PackageCodec.MAX_CIPHERTEXT_BYTES);
+
+        String packageValue = service.encryptPackage(plaintext, OWNER_ID);
+
+        assertThat(service.decryptPackage(packageValue, OWNER_ID)).isEqualTo(plaintext);
+    }
+
+    @Test
+    void rejectsPlaintextAboveUtf8Boundary() {
+        String plaintext = "🔐".repeat(10_001);
+        assertThat(plaintext.getBytes(StandardCharsets.UTF_8)).hasSize(PackageCodec.MAX_CIPHERTEXT_BYTES + 4);
+
+        assertThatThrownBy(() -> service.encrypt(plaintext, OWNER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("40000");
+    }
+
+    @Test
+    void rejectsPaddedAndStandardBase64Package() {
+        String padded = VECTOR_PACKAGE.replace(".aESjuIBJ6PPj48-yE2GTKg", ".aESjuIBJ6PPj48-yE2GTKg=");
+        assertError(() -> service.decryptPackage(padded, OWNER_ID), CryptoError.INVALID_PACKAGE_FORMAT);
+
+        String standard = VECTOR_PACKAGE.replace(
+                "0qr27sNOSnsG_3KCOZoblzioLbrV_EpMCk_E-xKhnw",
+                "0qr27sNOSnsG+3KCOZoblzioLbrV/EpMCk/E+xKhnw");
+        assertError(() -> service.decryptPackage(standard, OWNER_ID), CryptoError.INVALID_PACKAGE_FORMAT);
+    }
+
     private static CryptoKey zeroKey() {
         return new CryptoKey("k1", new SecretKeySpec(new byte[32], "AES"));
     }

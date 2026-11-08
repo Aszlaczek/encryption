@@ -231,6 +231,17 @@ class PackageCodecTests {
         assertThat(text).doesNotContain(VECTOR_CIPHERTEXT, VECTOR_TAG);
     }
 
+    @Test
+    void acceptsMinimumCiphertext() {
+        String oneByte = BASE64URL_ENCODER.encodeToString(new byte[]{42});
+        String packageValue = packageWith(VECTOR_NONCE, oneByte, VECTOR_TAG);
+
+        EncryptedPayload payload = codec.decode(packageValue);
+
+        assertThat(payload.ciphertext()).hasSize(1);
+        assertThat(codec.encode(payload)).isEqualTo(packageValue);
+    }
+
     private static EncryptedPayload vectorPayload() {
         return new EncryptedPayload(
                 PackageCodec.FORMAT_VERSION,
