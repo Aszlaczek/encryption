@@ -6,13 +6,13 @@ Ten plik jest automatycznie ładowany przez OpenCode. Zawiera skrót; szczegół
 
 Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: frontend React + Vite + TypeScript (UI po polsku), backend Spring Boot 4.1.2 / Java 17, PostgreSQL 16, uruchamiane przez Docker Compose. Hasła są hashowane Argon2id, a treść wiadomości szyfrowana po stronie serwera AES-256-GCM. Szczegóły wymagań: [`README.md`](README.md), kontrakt HTTP: [`docs/API.md`](docs/API.md).
 
-## Aktualny stan (2026-11-07)
+## Aktualny stan (2026-11-08)
 
-- Ostatni commit funkcjonalny: `3712052` — ZR-10 (konfiguracja i sekret klucza AES); `main == origin/main`, drzewo czyste.
-- Ukończone: ZR-01…ZR-10 (zakres/ADR, szkielet backendu, schemat i migracje, kontrakt API, szkielety repo, Compose, encje JPA, hashowanie i konta demo, logowanie/sesja/CSRF, test okna limitera, klucz AES i sekret).
-- Działa: `GET /api/auth/csrf`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`, rotacja sesji i CSRF, limiter 5/60 s, błędy RFC 9457, `413`/`415`, `X-Request-Id`, walidacja klucza AES przy starcie (`32 B`, `keyId=k1`) i sekret Compose tylko w backendzie.
-- **Nie ma jeszcze** `CryptoService`, endpointów `crypto` i `messages`, limitów szyfrowania/deszyfrowania oraz frontendu logowania. Anonimowe `GET /api/messages` zwraca `401`; z sesją zwróci `404`, bo endpoint nadal nie istnieje.
-- Testy: 57/57 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`). Brak testów E2E, CI i `docs/PERFORMANCE.md`.
+- Ostatni commit funkcjonalny: `TBD` — ZR-11 (`CryptoService` i `PackageCodec`); `main == origin/main`, drzewo czyste.
+- Ukończone: ZR-01…ZR-11 (zakres/ADR, szkielet backendu, schemat i migracje, kontrakt API, szkielety repo, Compose, encje JPA, hashowanie i konta demo, logowanie/sesja/CSRF, test okna limitera, klucz AES i sekret, AES-GCM i kodek pakietu).
+- Działa: `GET /api/auth/csrf`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`, rotacja sesji i CSRF, limiter 5/60 s, błędy RFC 9457, `413`/`415`, `X-Request-Id`, walidacja klucza AES przy starcie (`32 B`, `keyId=k1`), sekret Compose tylko w backendzie oraz `CryptoService`/`PackageCodec` (AES-256-GCM, nonce 12 B, tag 128 bitów, AAD `v1:<ownerId>:<keyId>`, walidacja pakietu).
+- **Nie ma jeszcze** endpointów `crypto` i `messages`, DTO wiadomości, limitów szyfrowania/deszyfrowania oraz frontendu logowania. Anonimowe `GET /api/messages` zwraca `401`; z sesją zwróci `404`, bo endpoint nadal nie istnieje.
+- Testy: 97/97 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`). Brak testów E2E, CI i `docs/PERFORMANCE.md`.
 
 ## Najpierw przeczytaj
 
@@ -20,7 +20,7 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 2. [`README.md`](README.md) — status, uruchomienie, dowody R01–R10.
 3. [`docs/API.md`](docs/API.md) — **kanoniczny** kontrakt HTTP, DTO, błędy, format pakietu, kursor.
 4. [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — schemat, mapowanie JPA, migracje, Argon2id.
-5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-15.
+5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-16.
 6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q45 (rozstrzygnięte i otwarte).
 
 Gdy dokumenty się różnią, rozstrzyga `docs/API.md` dla HTTP i `docs/DATA_MODEL.md` dla bazy. Zmiana zachowania wymaga aktualizacji dokumentu i ADR w **tym samym commicie**.
@@ -123,9 +123,12 @@ docker compose exec -T db psql -U encryption -d encryption -c 'select username, 
 - **Sesje i limiter są in-memory** — restart wymaga logowania, a wiele replik wymaga Redis/sticky sessions.
 - **Test okna limitera używa `MutableClock`** — nie dodawaj `Thread.sleep` ani rzeczywistego czekania 60 s; kontrolowany zegar jest podstawiany jako `@Primary` w `AuthRateLimitWindowIntegrationTests`.
 - **Klucz AES to sekret plikowy** — `.secrets/crypto.key` jest ignorowany, montowany tylko do backendu i nigdy nie trafia do Git, obrazu ani `environment`. Brak lub błędny klucz musi blokować start; nie przywracaj zerowego klucza demo.
+- **GCM zwraca `ciphertext || tag`** — przy szyfrowaniu odetnij ostatnie 16 B jako tag. Przy deszyfrowaniu przekaż całość do `Cipher.doFinal`; nie używaj `update` na szyfrogramie, bo plaintext mógłby powstać przed weryfikacją tagu.
+- **Świeży `Cipher` na każdą operację** — `Cipher` nie jest thread-safe. `SecureRandom` może być współdzielony; nonce musi mieć 12 B i być nowy dla każdego szyfrowania. Nie dodawaj pola z `Cipher`.
+- **Jedno miejsce walidacji pakietu** — tylko `PackageCodec` parsuje i buduje `v1.<key_id>.<nonce>.<ciphertext>.<tag>`; wymagany jest kanoniczny base64url bez paddingu i ASCII. AAD to `v1:<ownerId>:<keyId>`, a właściciel pochodzi z sesji.
 - **Utrata klucza jest nieodwracalna** — brak automatycznej rotacji i odzyskiwania w MVP. Zmiana pliku po zapisaniu wiadomości czyni je nieczytelnymi; kopia zapasowa jest obowiązkiem operatora.
 - **`SESSION_COOKIE_SECURE=false` lokalnie** — wdrożenie za HTTPS musi ustawić `true`, inaczej cookie nie zostanie odesłane lub będzie niebezpieczne.
 
 ## Następny krok
 
-Implementacja `CryptoService` i `PackageCodec` (AES-256-GCM, AAD `v1:<ownerId>:<keyId>`, walidacja formatu i długości) z użyciem gotowego beana `CryptoKey`, następnie DTO, serwis i endpointy `crypto` oraz `messages` z paginacją kursorową i limitami. Po nich: frontend logowania, testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).
+Implementacja DTO, serwisu i endpointów `crypto` oraz `messages` z użyciem gotowych `CryptoService` i `PackageCodec`: szyfrowanie bez zapisu, deszyfrowanie wklejonego pakietu, CRUD wiadomości, owner scope, `404` dla obcych zasobów, paginacja kursorowa i limity szyfrowania/deszyfrowania. Po nich: frontend logowania, testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).

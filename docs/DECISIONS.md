@@ -14,6 +14,7 @@ Dokument zbiera decyzje przyjęte w ramach zadania rekrutacyjnego. Numeracja jes
 | [ADR-13](#adr-13--argon2id-i-konta-demo-w-profilu-local) | Argon2id i konta demo w profilu local | Accepted | 2026-11-05 |
 | [ADR-14](#adr-14--logowanie-sesja-i-csrf) | Logowanie, sesja i CSRF | Accepted | 2026-11-06 |
 | [ADR-15](#adr-15--zarządzanie-kluczem-szyfrującym) | Zarządzanie kluczem szyfrującym | Accepted | 2026-11-07 |
+| [ADR-16](#adr-16--cryptoservice-i-kodek-pakietu) | CryptoService i kodek pakietu | Accepted | 2026-11-07 |
 
 ---
 
@@ -599,6 +600,61 @@ Wcześniejszy Compose używał zerowego klucza demo, co nie spełnia wymagania �
 ### Powiązane wymagania
 
 R03, R05, R06.
+
+---
+
+## ADR-16 — CryptoService i kodek pakietu
+
+### Status
+
+**Accepted** — 2026-11-07. Implementuje format i AAD z ADR-09 oraz klucz z ADR-15.
+
+### Kontekst
+
+ZR-11 wymaga AES-256-GCM, nonce 12 B, tagu 128 bitów, jednoznacznego AAD oraz walidacji pakietu przed deszyfrowaniem. Kryptografia musi być testowalna bez HTTP i bazy, a błędy muszą dać się później jednoznacznie zmapować na kody z `docs/API.md`. Jednocześnie nie wolno współdzielić mutowalnego `Cipher` między żądaniami ani zwrócić plaintextu przed weryfikacją tagu.
+
+### Decyzja
+
+1. `CryptoService` jest bezstanowy i zależy wyłącznie od `CryptoKey` oraz `PackageCodec`. Nie importuje HTTP, MVC ani JPA.
+2. Algorytm to `AES/GCM/NoPadding`, tag 128 bitów, nonce 12 B. Każda operacja tworzy nowy `Cipher`; współdzielony jest tylko thread-safe `SecureRandom`.
+3. Szyfrowanie korzysta z `Cipher.doFinal`, a wynik JCE (`ciphertext || tag`) jest dzielony na ostatnich 16 bajtach. Deszyfrowanie przekazuje całość `ciphertext || tag` do jednego `doFinal`; nie używa `update` na szyfrogramie, żeby plaintext nie powstał przed weryfikacją tagu.
+4. `AEADBadTagException` jest mapowany na `CryptoException` z kodem `DECRYPT_FAILED`. Komunikat nie zawiera plaintextu, pakietu, szyfrogramu ani klucza.
+5. AAD ma postać `v1:<ownerId>:<keyId>` i jest kodowany jako UTF-8. `ownerId` przekazuje wywołujący (docelowo z sesji), a `keyId` pochodzi z pakietu i musi być równy kluczowi załadowanemu w `CryptoKey`.
+6. `PackageCodec` jest jedynym miejscem parsowania i budowania pakietu. Waliduje kolejno: przycięcie ASCII whitespace, limit 56 000 znaków, pięć segmentów, wersję `v1`, format `key_id`, kanoniczny base64url bez paddingu oraz długości nonce/ciphertext/tag. Whitelistę znanego `key_id` egzekwuje `CryptoService`.
+7. Błędy domenowe korzystają z `CryptoError` (`INVALID_PACKAGE_FORMAT`, `UNSUPPORTED_PACKAGE_VERSION`, `UNKNOWN_KEY_ID`, `DECRYPT_FAILED`). Mapowanie na RFC 9457 pozostaje w warstwie web w kolejnym zadaniu.
+8. Produkcyjne szyfrowanie zawsze generuje nowy nonce. Deterministyczna metoda `encryptWithNonce` jest package-private i służy wyłącznie do odtworzenia opublikowanego wektora testowego.
+9. Plaintext jest kodowany jako UTF-8. Serwis odrzuca `null`, pusty tekst i więcej niż 40 000 B UTF-8; limit 10 000 punktów kodowych pozostaje walidacją DTO.
+10. `CryptoService` i `PackageCodec` są rejestrowane jako bean-y w `CryptoConfiguration`, obok istniejącego `CryptoKey`.
+
+### Konsekwencje
+
+**Pozytywne:**
+
+- Brak współdzielonego mutowalnego `Cipher` eliminuje wyścigi i przypadkowe mieszanie stanu między żądaniami.
+- Plaintext nie jest zwracany, jeśli tag lub AAD się nie zgadzają.
+- Kodek jest testowalny w izolacji i nie zna HTTP ani bazy.
+- Opublikowany wektor AES-GCM jest odtwarzalny w teście bez produkcyjnego sterowania nonce.
+- Kody błędów są stabilne i gotowe do mapowania w endpointach.
+
+**Negatywne:**
+
+- Każda operacja tworzy nowy obiekt `Cipher`; narzut jest akceptowalny dla MVP.
+- `PackageCodec` i `CryptoService` dzielą odpowiedzialność za walidację: składnia w kodeku, znany klucz w serwisie.
+- Testowy seam `encryptWithNonce` istnieje w kodzie produkcyjnym, choć jest package-private.
+- Brak rotacji i wielu aktywnych kluczy; nadal działa wyłącznie `k1`.
+
+### Odrzucone alternatywy
+
+- **Współdzielony `Cipher` lub `ThreadLocal<Cipher>`** — więcej stanu i ryzyko błędów; nowy `Cipher` jest prostszy i bezpieczny.
+- **Deszyfrowanie przez `update` + `doFinal`** — częściowy plaintext mógłby zostać ujawniony przed sprawdzeniem tagu.
+- **Losowy klucz przy starcie** — uniemożliwiłby odczyt wcześniejszych wiadomości.
+- **Parsowanie pakietu w kontrolerze lub serwisie wiadomości** — rozproszyłoby walidację i ułatwiło obejście limitów.
+- **Wyjątki HTTP w pakiecie crypto** — sprzęgłyby kryptografię z warstwą web.
+- **BouncyCastle jako provider AES** — JCE wystarcza; BouncyCastle pozostaje dla Argon2id.
+
+### Powiązane wymagania
+
+R03, R06.
 
 ---
 

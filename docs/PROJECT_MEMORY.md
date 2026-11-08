@@ -2,12 +2,12 @@
 
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
-- **Ostatnia aktualizacja:** 2026-11-07
-- **Ostatni commit funkcjonalny:** `3712052` — `feat(crypto): dodaj konfigurację i sekret klucza AES (ZR-10)`
+- **Ostatnia aktualizacja:** 2026-11-08
+- **Ostatni commit funkcjonalny:** `TBD` — `feat(crypto): zaimplementuj usługę AES-GCM i kodek pakietu (ZR-11)`
 - **Gałąź:** `main`, zsynchronizowana z `origin/main`
 - **Stan drzewa:** czysty
-- **Zadania ukończone:** ZR-01…ZR-10
-- **Następne zadanie:** `CryptoService` i endpointy wiadomości
+- **Zadania ukończone:** ZR-01…ZR-11
+- **Następne zadanie:** DTO, serwis i endpointy `crypto` oraz `messages`
 
 ## 1. Cel projektu
 
@@ -34,13 +34,13 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 - Rotacja identyfikatora sesji i tokenu CSRF po logowaniu; logout unieważnia tylko bieżącą sesję.
 - Limit 5 nieudanych logowań na 60 s na parę IP + login, z `429` i `Retry-After`; wygaśnięcie okna pokryte testem HTTP z kontrolowanym zegarem, bez rzeczywistego oczekiwania.
 - Klucz AES-256 generowany jednorazowo do `.secrets/crypto.key`, montowany tylko do backendu jako sekret Compose; walidacja 32 B i `keyId=k1` przy starcie, brak lub błąd blokuje start.
+- `CryptoService` i `PackageCodec`: AES-256-GCM, nonce 12 B, tag 128 bitów, AAD `v1:<ownerId>:<keyId>`, kanoniczny base64url i walidacja pakietu; 40 testów jednostkowych, w tym wektor z `docs/API.md`.
 - Błędy RFC 9457 z kodami `code`, `Cache-Control: no-store`, `X-Request-Id`, limit 65 536 B i `415` dla złego `Content-Type`.
 - Compose z trzema zdrowymi kontenerami, nginx jako jedyny publiczny punkt wejścia.
 - `/actuator/health` zwraca `200`; anonimowe `/api/messages` zwraca `401`.
 
 ### Jeszcze nie istnieje
 
-- `CryptoService` i walidacja formatu pakietu w czasie żądania,
 - endpointy `crypto` i `messages`, DTO wiadomości i paginacja przez HTTP,
 - limity szyfrowania/deszyfrowania (60/min i 30/min),
 - frontend logowania i obsługa CSRF w SPA,
@@ -51,7 +51,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 
 | Warstwa | Liczba | Uruchomienie |
 |---|---:|---|
-| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 57 | `cd backend && ./mvnw verify` |
+| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 97 | `cd backend && ./mvnw verify` |
 | Frontend (Vitest + Testing Library) | 3 | `cd frontend && npm test` |
 | E2E | 0 | brak |
 
@@ -74,6 +74,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-08 | `fb2c9b5` | 2026-11-06 | Logowanie, sesja, CSRF, `/me`, logout, rotacja, limiter, RFC 9457, limity transportu | `./mvnw verify` — 41/41, curl przez nginx, Compose |
 | ZR-09 | `a372022` | 2026-11-06 | Test HTTP wygaśnięcia okna limitera z kontrolowanym `Clock`; bez rzeczywistego oczekiwania 60 s | `./mvnw spotless:check verify` — 42/42, `AuthRateLimitWindowIntegrationTests` 1/1 |
 | ZR-10 | `3712052` | 2026-11-07 | Generacja klucza AES, sekret plikowy tylko w backendzie, walidacja 32 B i `keyId=k1`, blokada startu | `./mvnw spotless:check verify` — 57/57, Compose, restart, brak/błędny klucz |
+| ZR-11 | `TBD` | 2026-11-08 | `CryptoService` i `PackageCodec`: AES-256-GCM, nonce 12 B, tag 128 bitów, AAD, walidacja pakietu, typowane błędy | `./mvnw spotless:check verify` — 97/97; 40 nowych testów; Compose health=200; brak importów HTTP/JPA |
 
 ### ZR-01 — zakres i decyzje
 
@@ -218,6 +219,42 @@ brak źródła klucza               -> exit 1; czytelny błąd startu
 db, frontend, obraz bez Compose  -> brak /run/secrets/crypto_key
 ```
 
+### ZR-11 — CryptoService i kodek pakietu
+
+- `CryptoService` jest bezstanowy i zależy tylko od `CryptoKey` i `PackageCodec`; nie ma importów HTTP ani JPA.
+- Szyfrowanie używa `AES/GCM/NoPadding`, nonce 12 B z `SecureRandom` i tagu 128 bitów. Każda operacja tworzy nowy `Cipher`; nie ma współdzielonego mutowalnego `Cipher`.
+- Wynik JCE (`ciphertext || tag`) jest dzielony na ostatnich 16 B. Deszyfrowanie przekazuje całość do jednego `doFinal`; `AEADBadTagException` daje `DECRYPT_FAILED` bez plaintextu.
+- AAD to `v1:<ownerId>:<keyId>` w UTF-8; `ownerId` pochodzi od wywołującego, a `keyId` z pakietu i musi być równy kluczowi w `CryptoKey`.
+- `PackageCodec` waliduje przycięcie ASCII whitespace, limit 56 000 znaków, pięć segmentów, wersję `v1`, format `key_id`, kanoniczny base64url i długości nonce/ciphertext/tag. Whitelistę `k1` egzekwuje serwis.
+- `CryptoException` z `CryptoError` (`INVALID_PACKAGE_FORMAT`, `UNSUPPORTED_PACKAGE_VERSION`, `UNKNOWN_KEY_ID`, `DECRYPT_FAILED`) nie zależy od HTTP; mapowanie na RFC 9457 powstanie z endpointami.
+- Produkcyjne szyfrowanie zawsze generuje nowy nonce; package-private `encryptWithNonce` służy tylko do odtworzenia wektora testowego.
+- Testy: `PackageCodecTests` (22) i `CryptoServiceTests` (18), w tym wektor z `docs/API.md`, 64 równoległe szyfrowania i odrzucenie złego tagu/AAD/klucza.
+
+Weryfikacja ZR-11 (implementacja 2026-11-07, weryfikacja 2026-11-08; JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16.15):
+
+```text
+./mvnw -Dtest=PackageCodecTests,CryptoServiceTests test -> 40/40 (22 + 18), BUILD SUCCESS
+./mvnw spotless:check verify                             -> 97/97, BUILD SUCCESS
+grep HTTP/JPA w pakiecie crypto                          -> brak importów (NO_HTTP_OR_PERSISTENCE_IMPORTS)
+./scripts/check-secrets.sh                               -> OK, brak sekretów w trackowanych plikach
+node scripts/validate-api-contract.mjs                   -> OK, wektor AES-GCM i format pakietu zgodne
+docker compose up -d --build; docker compose restart backend
+                                                         -> 3 kontenery healthy, health=200, /api/messages=401
+                                                            log: Crypto key loaded for keyId=k1 (32 bytes)
+                                                            log: Started BackendApplication in 2.451 seconds
+```
+
+Asercje pokryte przez 40 testów ZR-11:
+
+```text
+decrypt wektora                                          -> "Zażółć gęślą jaźń 🔐"
+re-encrypt z nonce AAECAwQFBgcICQoL                      -> identyczny pakiet v1.k1...
+64 równoległe szyfrowania                                -> 64 unikalne nonce, wszystkie odszyfrowane
+zły tag / obcy owner / inny klucz                        -> DECRYPT_FAILED, brak plaintextu
+v2 / k2 / zły base64url                                  -> UNSUPPORTED_PACKAGE_VERSION / UNKNOWN_KEY_ID / INVALID_PACKAGE_FORMAT
+40 000 B / 40 001 B plaintext                            -> sukces / IllegalArgumentException
+```
+
 ## 4. Architektura i układ repozytorium
 
 ```text
@@ -245,7 +282,7 @@ Backend stosuje podział package-by-feature:
 - `auth/` — `AppUser`, `AppUserPrincipal`, repozytorium, normalizacja, konta demo, `AuthService`, `LogoutService`, limiter,
 - `auth/api/` — DTO i kontroler `/api/auth`,
 - `message/` — `Message`, `MessageRepository`, w przyszłości serwis i kontroler,
-- `crypto/` — konfiguracja i walidacja klucza AES (`CryptoProperties`, `CryptoKey`); docelowo AES-256-GCM i format pakietu,
+- `crypto/` — `CryptoProperties`, `CryptoKey`, `CryptoService`, `PackageCodec`, `EncryptedPayload` i błędy domenowe AES-256-GCM,
 - `common/security/` — `PasswordEncoderConfig`, `SecurityFilterChain`, CSRF, obsługa `401`/`403`,
 - `common/web/` — RFC 9457, limity transportu, nagłówki, walidatory.
 
@@ -315,7 +352,7 @@ Konfiguracja:
 
 `docs/API.md` jest kanonicznym kontraktem. Zaimplementowane są endpointy auth, sesja, CSRF i wspólne błędy. Pozostałe endpointy są nadal kontraktem do wykonania.
 
-- **Gotowe:** `GET /api/auth/csrf`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, sesja `JSESSIONID`, CSRF, RFC 9457 z `code`, kolejność `401` przed `403`, limity transportu, `429` dla logowania.
+- **Gotowe:** `GET /api/auth/csrf`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, sesja `JSESSIONID`, CSRF, RFC 9457 z `code`, kolejność `401` przed `403`, limity transportu, `429` dla logowania; warstwa `CryptoService`/`PackageCodec` gotowa do użycia przez endpointy.
 - **Do wykonania:** `POST /api/crypto/encrypt`, `POST /api/crypto/decrypt`, `GET/POST /api/messages`, `GET/DELETE /api/messages/{id}`, limity szyfrowania/deszyfrowania.
 - Właściciel nadal pochodzi wyłącznie z sesji; dotyczy to przyszłych endpointów wiadomości.
 

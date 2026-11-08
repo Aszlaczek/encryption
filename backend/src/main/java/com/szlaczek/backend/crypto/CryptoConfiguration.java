@@ -22,4 +22,14 @@ class CryptoConfiguration {
         log.info("Crypto key loaded for keyId={} ({} bytes)", cryptoKey.keyId(), CryptoKey.KEY_LENGTH_BYTES);
         return cryptoKey;
     }
+
+    @Bean
+    PackageCodec packageCodec() {
+        return new PackageCodec();
+    }
+
+    @Bean
+    CryptoService cryptoService(CryptoKey cryptoKey, PackageCodec packageCodec) {
+        return new CryptoService(cryptoKey, packageCodec);
+    }
 }
