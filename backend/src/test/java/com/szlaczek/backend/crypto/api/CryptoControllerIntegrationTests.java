@@ -104,7 +104,7 @@ class CryptoControllerIntegrationTests {
                 .content("{\"plaintext\":\"" + "a".repeat(10_001) + "\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.errors[0].code").value("INVALID_FORMAT"));
+                .andExpect(jsonPath("$.errors[0].code").value("TOO_LONG"));
 
         mockMvc.perform(post("/api/crypto/encrypt")
                 .session(session.session())
@@ -113,6 +113,24 @@ class CryptoControllerIntegrationTests {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"plaintext\":\"" + "😀".repeat(10_000) + "\"}"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void plaintextUtf8ByteBoundaryIsExactAndErrorsDoNotEchoInput() throws Exception {
+        Session session = login("alice", "AliceDemo123!");
+        mockMvc.perform(post("/api/crypto/encrypt")
+                .session(session.session())
+                .cookie(session.xsrfCookie())
+                .header("X-XSRF-TOKEN", session.token())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"plaintext\":\"" + "😀".repeat(10_001) + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(header().exists("X-Request-Id"))
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PROBLEM_JSON_VALUE))
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[0].field").value("plaintext"))
+                .andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain("😀"));
     }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder decryptRequest(

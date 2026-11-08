@@ -8,11 +8,11 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-08)
 
-- Ostatni commit funkcjonalny: `7c10342` (ZR-13); ZR-14 w toku.
+- Ostatni commit funkcjonalny: `66fce7a` (ZR-14); ZR-15 w toku.
 - Ukończone: ZR-01…ZR-14.
 - Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`.
 - **Nie ma jeszcze** usuwania wiadomości, limitera crypto 60/30 na minutę oraz frontendu logowania. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
-- Testy: 113/113 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`).
+- Testy: 115/115 backendu po zmianach ZR-15 (`./mvnw spotless:check verify`), 3 frontendu (`npm test`).
 
 ## Najpierw przeczytaj
 

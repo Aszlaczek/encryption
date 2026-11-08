@@ -686,6 +686,30 @@ R03, R06.
 
 R04, R06, R09.
 
+## ADR-18 — Stabilne kody walidacji i brak odbicia wejścia
+
+### Status
+
+**Accepted — 2026-11-08 (ZR-15).**
+
+### Decyzja
+
+1. Bean Validation pozostaje źródłem walidacji DTO; limity znaków Unicode w treści mierzymy punktami kodowymi, a osobne ograniczenia UTF-8 mierzymy po bajtach.
+2. Naruszenie `Codepoints` zwraca `400 VALIDATION_FAILED` z kodem pola `TOO_LONG`; naruszenie `Utf8Bytes` zwraca `TOO_MANY_BYTES`. Limit JSON transportu nadal jest mierzony bajtami i daje `413 PAYLOAD_TOO_LARGE`.
+3. Treść błędu i komunikat pola są stałe i nie zawierają odrzuconej wartości; `ApiExceptionHandler` nie loguje oczekiwanych błędów walidacji ani ciał żądań.
+4. Błędy MVC oraz błędy Spring Security/filtrów korzystają ze wspólnego `ApiProblem` RFC 9457; odpowiedzi API zachowują `Cache-Control: no-store`, a `X-Request-Id` jest generowany przez serwer i korelowany z `traceId`.
+5. Nie konfigurujemy loggera żądań z treścią body dla ścieżek API. Nieznane pola i zduplikowane klucze JSON pozostają odrzucane.
+
+### Konsekwencje
+
+- Klient otrzymuje stabilne kody maszynowe bez plaintextu, pakietu, hasła ani sekretów w odpowiedzi.
+- Granica 40 000 B plaintextu pokrywa się z 10 000 maksymalnymi punktami kodowymi Unicode; przypadek ponad oba limity może wskazać pierwszy naruszony constraint, lecz zawsze zwraca kontrolowany `VALIDATION_FAILED` bez wartości wejściowej.
+- Różne warstwy transportu i walidacji zachowują rozróżnialne statusy `413`, `415` oraz `400`.
+
+### Powiązane wymagania
+
+R06, R10.
+
 ---
 
 ## Zasady zmian decyzji

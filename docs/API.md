@@ -870,6 +870,8 @@ Błędy 1–3, 5, 7–8 → `400 INVALID_PACKAGE_FORMAT`. Błąd 4 → `400 UNSU
 | `username` (login) | 1–50 po normalizacji | walidator aplikacyjny | `400 VALIDATION_FAILED` |
 | `password` | 1–128 B UTF-8 | walidator aplikacyjny | `400 VALIDATION_FAILED` |
 
+Walidacje DTO nie odbijają odrzuconej wartości w błędzie. W `errors[].code` limit punktów kodowych mapuje się na `TOO_LONG`, a limit bajtów UTF-8 na `TOO_MANY_BYTES`; przy naruszeniu kilku reguł dla jednego pola serwer zwraca pierwszy raportowany constraint. Limit ciała żądania jest odrębny i daje `413` przed walidacją DTO.
+
 Limity szybkości:
 
 | Operacja | Limit | Klucz | Odpowiedź |

@@ -3,11 +3,11 @@
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
 - **Ostatnia aktualizacja:** 2026-11-08
-- **Ostatni commit funkcjonalny:** `de62f6a` — zapis, lista i odczyt wiadomości (ZR-14)
+- **Ostatni commit funkcjonalny:** `66fce7a` — zapis, lista i odczyt wiadomości (ZR-14); ZR-15 w toku
 - **Gałąź:** `main`, gotowa do push na `origin/main`
 - **Stan drzewa:** czysty po commicie
-- **Zadania ukończone:** ZR-01…ZR-14
-- **Następne zadanie:** usuwanie wiadomości, limity operacji crypto 60/min i 30/min
+- **Zadania ukończone:** ZR-01…ZR-14; ZR-15 w trakcie weryfikacji
+- **Następne zadanie:** usuwanie wiadomości i limity operacji crypto 60/min i 30/min
 
 ## 1. Cel projektu
 
@@ -37,7 +37,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 - `CryptoService` i `PackageCodec`: AES-256-GCM, nonce 12 B, tag 128 bitów, AAD `v1:<ownerId>:<keyId>`, kanoniczny base64url i walidacja pakietu; 49 testów jednostkowych, w tym wektor z `docs/API.md`, round-trip Unicode/emoji/nowych linii i granice rozmiaru.
 - `POST /api/crypto/encrypt` i `POST /api/crypto/decrypt`: DTO, właściciel z sesyjnego principalu, limity plaintextu/pakietu, CSRF, `no-store`, kontrolowane błędy RFC 9457; cztery integracyjne scenariusze HTTP.
 - Zapis, lista, szczegóły i deszyfrowanie zapisanych wiadomości: transakcyjny zapis przez `CryptoService`, scope właściciela z sesji, `404` dla cudzych/brakujących rekordów i kursor `(created_at, id)` zgodny z limitem API 1–50.
-- Błędy RFC 9457 z kodami `code`, `Cache-Control: no-store`, `X-Request-Id`, limit 65 536 B i `415` dla złego `Content-Type`.
+- Błędy RFC 9457 z kodami `code`, `Cache-Control: no-store`, `X-Request-Id`, limit 65 536 B i `415` dla złego `Content-Type`; `Codepoints` mapuje się na `TOO_LONG`, a `Utf8Bytes` na `TOO_MANY_BYTES`, bez odbijania wartości wejściowej.
 - Compose z trzema zdrowymi kontenerami, nginx jako jedyny publiczny punkt wejścia.
 - `/actuator/health` zwraca `200`; anonimowe `/api/messages` zwraca `401`.
 
@@ -53,7 +53,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 
 | Warstwa | Liczba | Uruchomienie |
 |---|---:|---|
-| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 113 | `cd backend && ./mvnw spotless:check verify` |
+| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 115 | `cd backend && ./mvnw spotless:check verify` |
 | Frontend (Vitest + Testing Library) | 3 | `cd frontend && npm test` |
 | E2E | 0 | brak |
 
@@ -79,7 +79,8 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-11 | `01bcd76` | 2026-11-08 | `CryptoService` i `PackageCodec`: AES-256-GCM, nonce 12 B, tag 128 bitów, AAD, walidacja pakietu, typowane błędy | `./mvnw spotless:check verify` — 97/97; 40 nowych testów; Compose health=200; brak importów HTTP/JPA |
 | ZR-12 | `a8acf35` | 2026-11-08 | Testy jednostkowe kryptografii: round-trip Unicode/emoji/spacji/nowych linii, 100 unikalnych nonce, tag/nonce z innego szyfrogramu, granice UTF-8, Base64 i minimum ciphertext | `./mvnw spotless:check verify` — 106/106; 9 nowych testów; AAD właściciela odrzucony |
 | ZR-13 | `7c10342` | 2026-11-08 | DTO i endpointy bezstanowego szyfrowania/deszyfrowania, sesyjny właściciel AAD, limity i mapowanie błędów domenowych na RFC 9457 | `./mvnw spotless:check verify` — 110/110; 4 scenariusze HTTP; walidator kontraktu i skan sekretów OK |
-| ZR-14 | `de62f6a` | 2026-11-08 | Transakcyjny zapis, lista z kursorem, szczegóły i deszyfrowanie zapisanych wiadomości z kontrolą owner scope | `./mvnw spotless:check verify` — 113/113; 3 scenariusze HTTP; skan sekretów, walidator kontraktu i diff check OK |
+| ZR-14 | `66fce7a` | 2026-11-08 | Transakcyjny zapis, lista z kursorem, szczegóły i deszyfrowanie zapisanych wiadomości z kontrolą owner scope | `./mvnw spotless:check verify` — 113/113; 3 scenariusze HTTP; skan sekretów, walidator kontraktu i diff check OK |
+| ZR-15 | w toku | 2026-11-08 | Stabilne kody Bean Validation dla punktów kodowych i bajtów UTF-8; testy granic hasła/tekstu, RFC 9457 i brak echo odrzuconych treści | `./mvnw spotless:check verify` — 115/115; `AuthIntegrationTests`, `CryptoControllerIntegrationTests`, `MessageControllerIntegrationTests` — 24/24 |
 
 ### ZR-01 — zakres i decyzje
 
@@ -429,18 +430,18 @@ AAD:    v1:<ownerId>:<keyId>
 
 ## 8. Inwentarz testów
 
-### Backend — 113 testów
+### Backend — 115 testów
 
 | Klasa | Liczba | Co sprawdza |
 |---|---:|---|
 | `PersistenceIntegrationTests` | 7 | migracje i walidacja mapowania, powtarzalność schematu, UNIQUE loginu, FK/cascade, CHECK-i długości, scope repozytoriów, kursor |
-| `AuthIntegrationTests` | 15 | CSRF, login, `/me`, logout, rotacja sesji i tokenu, `401` przed `403`, nierozróżnialne błędy, walidacja, `413`/`415`, `429`, nieznane ścieżki, `X-Request-Id` |
+| `AuthIntegrationTests` | 16 | CSRF, login, `/me`, logout, rotacja sesji i tokenu, `401` przed `403`, nierozróżnialne błędy, walidacja i granica 128 B hasła, `413`/`415`, `429`, nieznane ścieżki, `X-Request-Id` |
 | `AuthRateLimitWindowIntegrationTests` | 1 | wygaśnięcie okna limitera z kontrolowanym `Clock`, bez rzeczywistego czekania |
 | `CryptoKeyTests` | 10 | klucz inline/plik, priorytet pliku, brak klucza, zły base64, 16/33 B, nieznany `keyId`, brak pliku, brak wycieku w `toString` |
 | `CryptoKeyStartupTests` | 5 | poprawny start i blokada kontekstu dla braku klucza, złego base64, złej długości i nieznanego `keyId` |
 | `PackageCodecTests` | 23 | wektor i kanoniczny base64url, przycinanie ASCII, wersja, `key_id`, długości nonce/tag/ciphertext, minimum 1 B i maksimum 40 000 B, defensywne kopie |
 | `CryptoServiceTests` | 26 | AES-GCM round-trip Unicode/emoji/spacji/nowych linii, świeże nonce (także 100× ten sam tekst), zły tag/nonce/AAD/klucz, wersja, Base64, granice 40 000 B |
-| `CryptoControllerIntegrationTests` | 4 | szyfrowanie/deszyfrowanie HTTP, sesja, CSRF, izolacja pakietów i limity |
+| `CryptoControllerIntegrationTests` | 5 | szyfrowanie/deszyfrowanie HTTP, sesja, CSRF, izolacja pakietów, granica 40 000 B i brak echo błędnej treści |
 | `MessageControllerIntegrationTests` | 3 | zapis bez plaintextu, owner scope, szczegóły/decrypt, paginacja kursorowa, 404, auth i CSRF |
 | `DemoUserSeedingIntegrationTests` | 4 | dwa konta z hashami Argon2id, dopasowanie haseł, idempotencja bez nadpisywania, brak plaintextu w bazie, principal z `id` |
 | `LoginRateLimiterTests` | 5 | blokada szóstej próby, okno 60 s, reset po sukcesie, niezależność kluczy IP/login, starzenie wpisów |
@@ -549,7 +550,7 @@ Kolejność rekomendowana:
 Warunki wejścia do kolejnego zadania:
 
 - drzewo czyste i `main == origin/main`,
-- 113/113 testów backendu i 3/3 frontendu,
+- 115/115 testów backendu i 3/3 frontendu,
 - Compose z trzema zdrowymi kontenerami,
 - dokumentacja i ADR zaktualizowane w tym samym commicie,
 - wpis do Notion z rzeczywistym hashem commita i wynikami komend.

@@ -2,7 +2,7 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-14 — działa zapis `POST /api/messages`, lista z paginacją kursorową `GET /api/messages`, szczegóły `GET /api/messages/{id}` i deszyfrowanie zapisanego rekordu `POST /api/messages/{id}/decrypt`. Wszystkie operacje są owner-scoped; baza przechowuje wyłącznie zaszyfrowaną kopertę i metadane. Limit listy jest zgodny z kanonicznym API: maksymalnie 50 (mimo rozbieżnego opisu 100 w karcie Notion). Pełne testy backendu: **113/113**. Usuwanie wiadomości, limiter crypto 60/30 na minutę, frontend logowania, testy E2E i CI pozostają do wykonania.
+> **Status:** ZR-15 — walidacja auth/crypto/messages zwraca stabilne kody RFC 9457; wejścia ograniczane są w punktach kodowych i bajtach UTF-8, błędy nie zawierają odrzuconej treści, a API zachowuje `no-store` i `X-Request-Id`. Pełne testy backendu: **115/115**. Zaimplementowane endpointy obejmują logowanie, szyfrowanie, zapis, listę, szczegóły i deszyfrowanie. Usuwanie wiadomości, limiter crypto 60/30 na minutę, frontend, E2E i CI pozostają do wykonania.
 
 **Repozytorium:** <https://github.com/Aszlaczek/encryption>
 
@@ -395,6 +395,15 @@ uszkodzony tag w zapisanym rekordzie               -> 500 MESSAGE_UNDECRYPTABLE,
 ```
 
 Limit API pozostaje 1–50 zgodnie z kanonicznym `docs/API.md`; karta Notion miała niezgodną wartość 100, poprawioną podczas ZR-14.
+
+Wynik ZR-15 (weryfikacja 2026-11-08; JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16.15):
+
+```text
+./mvnw -Dtest=AuthIntegrationTests,CryptoControllerIntegrationTests,MessageControllerIntegrationTests test -> 24/24, BUILD SUCCESS
+./mvnw spotless:check verify -> 115/115, BUILD SUCCESS
+```
+
+Walidacja DTO mapuje przekroczenie punktów kodowych na `TOO_LONG`, a przekroczenie bajtów UTF-8 na `TOO_MANY_BYTES`. Testy potwierdzają granicę 128 B hasła, granicę plaintextu 40 000 B (10 000 emoji) oraz kontrolowany błąd bez odbicia tekstu przekraczającego limit. Błędy walidacji mają `application/problem+json`, `no-store` i `X-Request-Id`.
 
 Wynik ZR-13 (weryfikacja 2026-11-08; JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16.15):
 

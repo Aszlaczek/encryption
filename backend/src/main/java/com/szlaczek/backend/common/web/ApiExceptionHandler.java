@@ -253,6 +253,7 @@ public class ApiExceptionHandler {
             case "NotBlank" -> error.getRejectedValue() == null ? "REQUIRED" : "BLANK";
             case "Size" -> "TOO_LONG";
             case "Utf8Bytes" -> "TOO_MANY_BYTES";
+            case "Codepoints" -> "TOO_LONG";
             default -> "INVALID_FORMAT";
         };
         String message = error.getDefaultMessage() == null

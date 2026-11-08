@@ -309,6 +309,23 @@ class AuthIntegrationTests {
     }
 
     @Test
+    void passwordUtf8BoundaryDoesNotTrimOrEchoRejectedValue() throws Exception {
+        Csrf csrf = csrf();
+        String passwordAtLimit = "a".repeat(128);
+        login(csrf, "alice", passwordAtLimit, null)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+
+        String oversizedPassword = "😀".repeat(33);
+        login(csrf, "alice", oversizedPassword, null)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors[0].field").value("password"))
+                .andExpect(jsonPath("$.errors[0].code").value("TOO_MANY_BYTES"))
+                .andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain("😀"));
+    }
+
+    @Test
     void wrongContentTypeAndOversizedBodyAreRejected() throws Exception {
         mockMvc.perform(post("/api/auth/login")
                 .contentType(MediaType.TEXT_PLAIN)
