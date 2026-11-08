@@ -1,5 +1,5 @@
 /**
- * Cryptography module: AES-256-GCM encryption, package codec and AAD construction.
+ * Cryptography module: AES-256-GCM encryption, package codec, HTTP API and AAD construction.
  *
  * <p>
  * {@link com.szlaczek.backend.crypto.CryptoService} performs AES-256-GCM with a fresh 12-byte nonce and a 128-bit tag.

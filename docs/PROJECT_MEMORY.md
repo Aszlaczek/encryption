@@ -3,11 +3,11 @@
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
 - **Ostatnia aktualizacja:** 2026-11-08
-- **Ostatni commit funkcjonalny:** `a8acf35` — `test(crypto): pokryj round-trip, AAD i granice kryptografii (ZR-12)`
+- **Ostatni commit funkcjonalny:** ZR-13 w trakcie przygotowania; bazowy commit `6ea408f` — raport ZR-12
 - **Gałąź:** `main`, zsynchronizowana z `origin/main`
 - **Stan drzewa:** czysty
-- **Zadania ukończone:** ZR-01…ZR-12
-- **Następne zadanie:** DTO, serwis i endpointy `crypto` oraz `messages`
+- **Zadania ukończone:** ZR-01…ZR-13
+- **Następne zadanie:** endpointy wiadomości: create/list/get/delete, scope właściciela i paginacja kursorowa
 
 ## 1. Cel projektu
 
@@ -35,13 +35,14 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 - Limit 5 nieudanych logowań na 60 s na parę IP + login, z `429` i `Retry-After`; wygaśnięcie okna pokryte testem HTTP z kontrolowanym zegarem, bez rzeczywistego oczekiwania.
 - Klucz AES-256 generowany jednorazowo do `.secrets/crypto.key`, montowany tylko do backendu jako sekret Compose; walidacja 32 B i `keyId=k1` przy starcie, brak lub błąd blokuje start.
 - `CryptoService` i `PackageCodec`: AES-256-GCM, nonce 12 B, tag 128 bitów, AAD `v1:<ownerId>:<keyId>`, kanoniczny base64url i walidacja pakietu; 49 testów jednostkowych, w tym wektor z `docs/API.md`, round-trip Unicode/emoji/nowych linii i granice rozmiaru.
+- `POST /api/crypto/encrypt` i `POST /api/crypto/decrypt`: DTO, właściciel z sesyjnego principalu, limity plaintextu/pakietu, CSRF, `no-store`, kontrolowane błędy RFC 9457; cztery integracyjne scenariusze HTTP.
 - Błędy RFC 9457 z kodami `code`, `Cache-Control: no-store`, `X-Request-Id`, limit 65 536 B i `415` dla złego `Content-Type`.
 - Compose z trzema zdrowymi kontenerami, nginx jako jedyny publiczny punkt wejścia.
 - `/actuator/health` zwraca `200`; anonimowe `/api/messages` zwraca `401`.
 
 ### Jeszcze nie istnieje
 
-- endpointy `crypto` i `messages`, DTO wiadomości i paginacja przez HTTP,
+- endpointy `messages`, DTO wiadomości i paginacja przez HTTP,
 - limity szyfrowania/deszyfrowania (60/min i 30/min),
 - frontend logowania i obsługa CSRF w SPA,
 - testy E2E, konfiguracja CI, `docs/PERFORMANCE.md`,
@@ -51,7 +52,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 
 | Warstwa | Liczba | Uruchomienie |
 |---|---:|---|
-| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 106 | `cd backend && ./mvnw verify` |
+| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 110 | `cd backend && ./mvnw spotless:check verify` |
 | Frontend (Vitest + Testing Library) | 3 | `cd frontend && npm test` |
 | E2E | 0 | brak |
 
@@ -76,6 +77,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-10 | `3712052` | 2026-11-07 | Generacja klucza AES, sekret plikowy tylko w backendzie, walidacja 32 B i `keyId=k1`, blokada startu | `./mvnw spotless:check verify` — 57/57, Compose, restart, brak/błędny klucz |
 | ZR-11 | `01bcd76` | 2026-11-08 | `CryptoService` i `PackageCodec`: AES-256-GCM, nonce 12 B, tag 128 bitów, AAD, walidacja pakietu, typowane błędy | `./mvnw spotless:check verify` — 97/97; 40 nowych testów; Compose health=200; brak importów HTTP/JPA |
 | ZR-12 | `a8acf35` | 2026-11-08 | Testy jednostkowe kryptografii: round-trip Unicode/emoji/spacji/nowych linii, 100 unikalnych nonce, tag/nonce z innego szyfrogramu, granice UTF-8, Base64 i minimum ciphertext | `./mvnw spotless:check verify` — 106/106; 9 nowych testów; AAD właściciela odrzucony |
+| ZR-13 | *(commit po weryfikacji)* | 2026-11-08 | DTO i endpointy bezstanowego szyfrowania/deszyfrowania, sesyjny właściciel AAD, limity i mapowanie błędów domenowych na RFC 9457 | `./mvnw spotless:check verify` — 110/110; 4 scenariusze HTTP; walidator kontraktu i skan sekretów OK |
 
 ### ZR-01 — zakres i decyzje
 
@@ -264,6 +266,25 @@ v2 / k2 / zły base64url                                  -> UNSUPPORTED_PACKAGE
 - Negatywne: tag i nonce z innego szyfrogramu, zmieniony tag w pełnym pakiecie, padding `=`, standardowy base64 `+`/`/`, 10 001 emoji (40 004 B), obcy właściciel przez AAD.
 - Granice: 10 000 emoji = 40 000 B i 10 000 punktów kodowych przechodzi; 1-bajtowy ciphertext jest poprawny w kodeku.
 - Kryterium AAD: `rejectsDifferentOwner` odrzuca pakiet przy innym `ownerId` jako `DECRYPT_FAILED`, bez ujawnienia plaintextu.
+
+### ZR-13 — API szyfrowania i deszyfrowania
+
+- Dodano `POST /api/crypto/encrypt` i `POST /api/crypto/decrypt` oraz DTO zgodne z kontraktem. Właściciel jest pobierany wyłącznie z `AppUserPrincipal`; ciało żądania nie przyjmuje identyfikatora właściciela.
+- Walidacja plaintextu sprawdza ASCII blank, maksymalnie 10 000 punktów kodowych i 40 000 B UTF-8. Pakiet ma limit 56 000 znaków i jest walidowany przez `PackageCodec`.
+- `ApiExceptionHandler` mapuje format, wersję i nieznany klucz na `400`, a nieudane uwierzytelnienie AES-GCM na `422 DECRYPT_FAILED`. Odpowiedzi błędów nie zawierają tekstu jawnego ani pakietu. Filtr API ustawia `Cache-Control: no-store`; chronione POST-y wymagają sesji i CSRF.
+- Zależności ZR-08, ZR-11 i ZR-12 potwierdzono commitami `fb2c9b5`, `01bcd76` i `a8acf35` (HEAD przed zmianami: `6ea408f`).
+
+Weryfikacja ZR-13 (2026-11-08; JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16.15):
+
+```text
+./mvnw -Dtest=CryptoControllerIntegrationTests test -> 4/4, BUILD SUCCESS
+./mvnw spotless:check verify                       -> 110/110, BUILD SUCCESS
+./scripts/check-secrets.sh                         -> OK
+node scripts/validate-api-contract.mjs             -> OK (28 przykładów JSON, 12 endpointów, wektor AES-GCM)
+git diff --check                                   -> OK
+```
+
+Round-trip zalogowanej Alice zakończył się `200`, a odpowiedź zawierała odszyfrowany oryginalny tekst i `no-store`. Anonimowy klient otrzymał `401 UNAUTHENTICATED`. Pakiet Alice przesłany z sesji Boba zwrócił `422 DECRYPT_FAILED` bez plaintextu; błędna struktura zwróciła `400 INVALID_PACKAGE_FORMAT`. Limity 10 001 code points (400 validation) i 10 000 emoji/40 000 B (sukces) zostały sprawdzone.
 
 Weryfikacja ZR-12 (2026-11-08; JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16.15):
 
@@ -495,7 +516,7 @@ Kolejność rekomendowana:
 2. ~~**Walidacja i błędy**~~ — wykonane w ZR-08 dla auth i transportu; kolejne DTO dołączą własne walidatory.
 3. ~~**Konfiguracja i trwałość klucza**~~ — wykonane w ZR-10: generacja, sekret Compose tylko w backendzie, walidacja startowa, ADR-15.
 4. ~~**Kryptografia**~~ — wykonane w ZR-11 i pokryte testami jednostkowymi w ZR-12: `CryptoService` AES-256-GCM, `PackageCodec`, format pakietu, AAD, walidacja nonce/tag/długości, wektory z `docs/API.md`.
-5. **Endpointy wiadomości** — create/list/get/delete, owner scope, `404` dla obcych zasobów, paginacja kursorowa, limity szyfrowania/deszyfrowania.
+5. **Endpointy wiadomości** — create/list/get/delete, owner scope, `404` dla obcych zasobów i paginacja kursorowa. Limity operacji crypto 60/min i 30/min nadal wymagają implementacji.
 6. **Frontend** — formularz logowania, obsługa CSRF, lista i edytor wiadomości, stany błędów, testy komponentów.
 7. **E2E** — Playwright: logowanie, izolacja użytkowników, CRUD, wylogowanie, błędy walidacji.
 8. **CI i wydajność** — workflow GitHub Actions, `docs/PERFORMANCE.md`, testy obciążeniowe i analiza pamięci Argon2id.
@@ -503,7 +524,7 @@ Kolejność rekomendowana:
 Warunki wejścia do kolejnego zadania:
 
 - drzewo czyste i `main == origin/main`,
-- 106/106 testów backendu i 3/3 frontendu,
+- 110/110 testów backendu i 3/3 frontendu,
 - Compose z trzema zdrowymi kontenerami,
 - dokumentacja i ADR zaktualizowane w tym samym commicie,
 - wpis do Notion z rzeczywistym hashem commita i wynikami komend.

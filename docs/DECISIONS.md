@@ -621,7 +621,7 @@ ZR-11 wymaga AES-256-GCM, nonce 12 B, tagu 128 bitów, jednoznacznego AAD oraz w
 4. `AEADBadTagException` jest mapowany na `CryptoException` z kodem `DECRYPT_FAILED`. Komunikat nie zawiera plaintextu, pakietu, szyfrogramu ani klucza.
 5. AAD ma postać `v1:<ownerId>:<keyId>` i jest kodowany jako UTF-8. `ownerId` przekazuje wywołujący (docelowo z sesji), a `keyId` pochodzi z pakietu i musi być równy kluczowi załadowanemu w `CryptoKey`.
 6. `PackageCodec` jest jedynym miejscem parsowania i budowania pakietu. Waliduje kolejno: przycięcie ASCII whitespace, limit 56 000 znaków, pięć segmentów, wersję `v1`, format `key_id`, kanoniczny base64url bez paddingu oraz długości nonce/ciphertext/tag. Whitelistę znanego `key_id` egzekwuje `CryptoService`.
-7. Błędy domenowe korzystają z `CryptoError` (`INVALID_PACKAGE_FORMAT`, `UNSUPPORTED_PACKAGE_VERSION`, `UNKNOWN_KEY_ID`, `DECRYPT_FAILED`). Mapowanie na RFC 9457 pozostaje w warstwie web w kolejnym zadaniu.
+7. Błędy domenowe korzystają z `CryptoError` (`INVALID_PACKAGE_FORMAT`, `UNSUPPORTED_PACKAGE_VERSION`, `UNKNOWN_KEY_ID`, `DECRYPT_FAILED`). Warstwa web mapuje błędy formatu, wersji i klucza na `400`, a nieudane uwierzytelnienie tagu/AAD na `422 DECRYPT_FAILED`, używając bezpiecznych komunikatów RFC 9457 bez plaintextu i pakietu.
 8. Produkcyjne szyfrowanie zawsze generuje nowy nonce. Deterministyczna metoda `encryptWithNonce` jest package-private i służy wyłącznie do odtworzenia opublikowanego wektora testowego.
 9. Plaintext jest kodowany jako UTF-8. Serwis odrzuca `null`, pusty tekst i więcej niż 40 000 B UTF-8; limit 10 000 punktów kodowych pozostaje walidacją DTO.
 10. `CryptoService` i `PackageCodec` są rejestrowane jako bean-y w `CryptoConfiguration`, obok istniejącego `CryptoKey`.
@@ -635,6 +635,7 @@ ZR-11 wymaga AES-256-GCM, nonce 12 B, tagu 128 bitów, jednoznacznego AAD oraz w
 - Kodek jest testowalny w izolacji i nie zna HTTP ani bazy.
 - Opublikowany wektor AES-GCM jest odtwarzalny w teście bez produkcyjnego sterowania nonce.
 - Kody błędów są stabilne i gotowe do mapowania w endpointach.
+- Endpointy `/api/crypto/encrypt` i `/api/crypto/decrypt` przekazują do kryptografii wyłącznie UUID z `AppUserPrincipal`; odpowiedzi API nie są cache'owane.
 
 **Negatywne:**
 
@@ -655,6 +656,10 @@ ZR-11 wymaga AES-256-GCM, nonce 12 B, tagu 128 bitów, jednoznacznego AAD oraz w
 ### Powiązane wymagania
 
 R03, R06.
+
+### Uzupełnienie ZR-13 — mapowanie błędów HTTP
+
+**Accepted — 2026-11-08.** Warstwa web mapuje typowane błędy kryptograficzne z ADR-16 na kontrakt HTTP: niepoprawna struktura, wersja i nieznany identyfikator klucza to `400`; błędny tag lub AAD to `422 DECRYPT_FAILED`. Tekst odpowiedzi jest stały i nie zawiera wartości wejściowej. Test integracyjny potwierdza `422` dla pakietu innego użytkownika i brak pola plaintext w błędzie.
 
 ---
 

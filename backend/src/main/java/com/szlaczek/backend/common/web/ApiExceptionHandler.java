@@ -2,6 +2,8 @@ package com.szlaczek.backend.common.web;
 
 import com.szlaczek.backend.auth.InvalidCredentialsException;
 import com.szlaczek.backend.auth.RateLimitedException;
+import com.szlaczek.backend.crypto.CryptoError;
+import com.szlaczek.backend.crypto.CryptoException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Comparator;
 import java.util.List;
@@ -128,6 +130,24 @@ public class ApiExceptionHandler {
                         "RATE_LIMITED",
                         "Zbyt wiele żądań. Spróbuj ponownie później.",
                         request));
+    }
+
+    @ExceptionHandler(CryptoException.class)
+    public ResponseEntity<ApiProblem> handleCrypto(CryptoException exception, HttpServletRequest request) {
+        return switch (exception.error()) {
+            case INVALID_PACKAGE_FORMAT -> problem(
+                    HttpStatus.BAD_REQUEST, CryptoError.INVALID_PACKAGE_FORMAT.name(), "Niepoprawny format pakietu.",
+                    request);
+            case UNSUPPORTED_PACKAGE_VERSION -> problem(
+                    HttpStatus.BAD_REQUEST, CryptoError.UNSUPPORTED_PACKAGE_VERSION.name(),
+                    "Nieobsługiwana wersja pakietu.", request);
+            case UNKNOWN_KEY_ID -> problem(
+                    HttpStatus.BAD_REQUEST, CryptoError.UNKNOWN_KEY_ID.name(), "Nieznany identyfikator klucza.",
+                    request);
+            case DECRYPT_FAILED -> problem(
+                    HttpStatus.UNPROCESSABLE_ENTITY, CryptoError.DECRYPT_FAILED.name(),
+                    "Nie udało się odszyfrować pakietu.", request);
+        };
     }
 
     @ExceptionHandler(Exception.class)

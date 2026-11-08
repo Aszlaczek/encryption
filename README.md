@@ -2,7 +2,7 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-12 — logowanie, sesja serwerowa i CSRF działają zgodnie z [`docs/API.md`](docs/API.md). Dostępne są `GET /api/auth/csrf`, `POST /api/auth/login`, `GET /api/auth/me` i `POST /api/auth/logout`, z rotacją identyfikatora sesji i tokenu CSRF po logowaniu, limitem 5 nieudanych prób na 60 s na parę IP + login oraz błędami RFC 9457 z kolejnością `401` przed `403`. Klucz AES-256 jest generowany jednorazowo do ignorowanego pliku, montowany tylko do backendu jako sekret i walidowany przy starcie (32 B, `keyId=k1`); brak lub błąd klucza blokuje start. `CryptoService` i `PackageCodec` implementują AES-256-GCM z nonce 12 B, tagiem 128 bitów, AAD `v1:<ownerId>:<keyId>` i walidacją pakietu (wersja `v1`, długości, kanoniczny base64url). Testy kryptografii pokrywają round-trip Unicode, emoji, spacji i nowych linii, unikalne nonce, zmianę tagu/AAD/klucza, wersje, Base64 oraz granice 40 000 B. Testy backendu: **106/106**. Endpointy `crypto` i `messages`, frontend logowania, testy E2E i CI pozostają do wykonania.
+> **Status:** ZR-13 — działa API szyfrowania bez zapisu `POST /api/crypto/encrypt` i deszyfrowania pakietu `POST /api/crypto/decrypt`, chronione sesją i CSRF. Właściciel AAD pochodzi z principalu sesji; limity DTO to 10 000 punktów kodowych / 40 000 B UTF-8 plaintextu i 56 000 znaków pakietu. Błędy pakietu mają kontrolowany format RFC 9457, a odpowiedzi `/api/**` mają `no-store`. Backend: **110/110** testów. Endpointy wiadomości, frontend logowania, testy E2E i CI pozostają do wykonania.
 
 **Repozytorium:** <https://github.com/Aszlaczek/encryption>
 
@@ -360,6 +360,7 @@ Konta są tworzone wyłącznie przy aktywnym profilu `local` (`application-local
 | Backend — wygaśnięcie okna limitera | JUnit 5, MockMvc, Testcontainers, kontrolowany `Clock` | `AuthRateLimitWindowIntegrationTests` — 1 test: 5× `401`, 6. próba `429` z `Retry-After`, przesunięcie zegara o 61 s i ponowne logowanie `200` bez rzeczywistego czekania |
 | Backend — konfiguracja i walidacja klucza | JUnit 5, `ApplicationContextRunner`, `@TempDir` | `CryptoKeyTests` (10) + `CryptoKeyStartupTests` (5): poprawny klucz inline/plik, priorytet pliku, brak klucza, zły base64, 16/33 B, nieznany `keyId`, brak pliku, brak wycieku klucza w `toString`, blokada startu kontekstu |
 | Backend — AES-GCM i kodek pakietu | JUnit 5, AssertJ | `PackageCodecTests` (23) + `CryptoServiceTests` (26): wektor z `docs/API.md`, kanoniczny base64url, round-trip Unicode/emoji/spacji/nowych linii, 100 unikalnych nonce dla tego samego tekstu, tag i nonce z innego szyfrogramu, granice 40 000 B, zły AAD/klucz bez zwracania plaintextu |
+| Backend — HTTP crypto | JUnit 5, MockMvc, Testcontainers PostgreSQL 16 | `CryptoControllerIntegrationTests` (4): round-trip właściciela, 401 anonimowego klienta, `422 DECRYPT_FAILED` dla pakietu innego właściciela, `400 INVALID_PACKAGE_FORMAT`, limity DTO i `no-store` |
 | Backend — limiter i problem details | JUnit 5 | `LoginRateLimiterTests` (5), `AppUserPrincipalTests` (2), `ApiProblemFactoryTests` (2) |
 | Backend — format i higiena | Spotless, Enforcer | `cd backend && ./mvnw spotless:check verify` |
 | Schemat bazy i migracje | PostgreSQL 16, psql, Docker | `./scripts/validate-schema.sh` |
@@ -367,6 +368,27 @@ Konta są tworzone wyłącznie przy aktywnym profilu `local` (`application-local
 | Frontend — jednostkowe i komponentowe | Vitest, React Testing Library | `cd frontend && npm run test` |
 | Frontend — lint i format | ESLint, Prettier | `cd frontend && npm run lint && npm run format:check` |
 | Sekrety | `git grep`, `.gitignore` | `./scripts/check-secrets.sh` |
+
+Wynik ZR-13 (weryfikacja 2026-11-08; JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16.15):
+
+```text
+./mvnw -Dtest=CryptoControllerIntegrationTests test -> 4/4, BUILD SUCCESS
+./mvnw spotless:check verify                       -> 110/110, BUILD SUCCESS
+./scripts/check-secrets.sh                         -> OK, brak sekretów w trackowanych plikach
+node scripts/validate-api-contract.mjs             -> OK, 28 przykładów JSON, 12 endpointów i wektor AES-GCM
+git diff --check                                   -> OK
+```
+
+Scenariusze HTTP ZR-13:
+
+```text
+alice encrypt -> decrypt pakietu z tą samą sesją       -> 200, plaintext identyczny, Cache-Control: no-store
+anonimowy POST /api/crypto/encrypt                    -> 401 UNAUTHENTICATED
+pakiet alice użyty w sesji bob                        -> 422 DECRYPT_FAILED, bez plaintextu
+uszkodzony pakiet                                     -> 400 INVALID_PACKAGE_FORMAT, bez danych
+10 001 punktów kodowych                               -> 400 VALIDATION_FAILED
+10 000 emoji (40 000 B UTF-8)                         -> 200
+```
 | E2E i dostępność | Playwright, axe | `cd frontend && npx playwright test` (kolejne zadanie) |
 | Docker — czysty start | Docker Compose, healthchecki | `docker compose down -v && docker compose up -d --build` |
 | Wydajność | `hey`, `EXPLAIN ANALYZE` | opis w `docs/PERFORMANCE.md` |

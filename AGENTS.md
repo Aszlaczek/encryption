@@ -8,11 +8,11 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-08)
 
-- Ostatni commit funkcjonalny: `a8acf35` — ZR-12 (testy kryptografii); `main == origin/main`, drzewo czyste.
-- Ukończone: ZR-01…ZR-12 (zakres/ADR, szkielet backendu, schemat i migracje, kontrakt API, szkielety repo, Compose, encje JPA, hashowanie i konta demo, logowanie/sesja/CSRF, test okna limitera, klucz AES i sekret, AES-GCM i kodek pakietu, testy jednostkowe kryptografii).
-- Działa: `GET /api/auth/csrf`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`, rotacja sesji i CSRF, limiter 5/60 s, błędy RFC 9457, `413`/`415`, `X-Request-Id`, walidacja klucza AES przy starcie (`32 B`, `keyId=k1`), sekret Compose tylko w backendzie oraz `CryptoService`/`PackageCodec` (AES-256-GCM, nonce 12 B, tag 128 bitów, AAD `v1:<ownerId>:<keyId>`, walidacja pakietu).
-- **Nie ma jeszcze** endpointów `crypto` i `messages`, DTO wiadomości, limitów szyfrowania/deszyfrowania oraz frontendu logowania. Anonimowe `GET /api/messages` zwraca `401`; z sesją zwróci `404`, bo endpoint nadal nie istnieje.
-- Testy: 106/106 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`). Brak testów E2E, CI i `docs/PERFORMANCE.md`.
+- Ostatni commit funkcjonalny: ZR-13 (commit po weryfikacji); baza `6ea408f`.
+- Ukończone: ZR-01…ZR-13 (m.in. auth, AES-GCM i endpointy crypto).
+- Działa: endpointy auth oraz `POST /api/crypto/encrypt` i `/api/crypto/decrypt`, sesyjny właściciel, CSRF, limity DTO, kontrolowane błędy RFC 9457 i `no-store`.
+- **Nie ma jeszcze** endpointów `messages`, limitera crypto 60/30 na minutę oraz frontendu logowania. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
+- Testy: 110/110 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`).
 
 ## Najpierw przeczytaj
 
@@ -50,7 +50,7 @@ docker compose up -d --build      # pierwszy start / przebudowa
 docker compose up -d              # kolejne starty
 docker compose ps                 # 3 kontenery powinny być healthy
 curl -i http://localhost:3000/actuator/health
-curl -i http://localhost:3000/api/messages   # 401 bez sesji; 404 z sesją (brak endpointu)
+curl -i http://localhost:3000/api/messages   # obecnie 401 bez sesji
 
 # Auth: CSRF -> login -> me -> logout
 JAR=$(mktemp)

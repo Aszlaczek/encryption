@@ -4,7 +4,7 @@
 > **Data:** 2026-11-04.
 > **Wymagania:** R02, R03, R04, R06.
 > **Zależności:** ZR-01 (`b1e9fbe`) i ZR-02 (`2ab856e`) — potwierdzone.
-> **Status:** kontrakt zamknięty i zweryfikowany statycznie. Implementacja endpointów należy do kolejnego zadania backendowego.
+> **Status:** kontrakt zamknięty i zweryfikowany statycznie. Endpointy `/api/crypto/encrypt` i `/api/crypto/decrypt` są zaimplementowane; implementacja endpointów wiadomości należy do kolejnych zadań backendowych.
 
 Ten dokument jest **kanonicznym źródłem prawdy** dla kontraktu HTTP. Jeśli README, `docs/DATA_MODEL.md` lub kod są z nim sprzeczne, pierwszeństwo ma ten plik, a rozbieżność należy poprawić w tym samym commicie.
 
