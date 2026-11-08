@@ -102,7 +102,8 @@ public class ApiRequestHeadersFilter extends OncePerRequestFilter {
         }
 
         // Logout deliberately has no body and therefore no content type.
-        return !"/api/auth/logout".equals(request.getRequestURI());
+        String uri = request.getRequestURI();
+        return !"/api/auth/logout".equals(uri) && !uri.matches("^/api/messages/[^/]+/decrypt$");
     }
 
     private boolean isJsonUtf8(HttpServletRequest request) {

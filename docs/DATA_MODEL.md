@@ -5,7 +5,7 @@ Dokument opisuje model danych MVP, migracje projektowe oraz uzasadnienie zmian w
 - **Zadanie:** ZR-02 — model danych i migracje projektowe; ZR-06 — encje JPA, repozytoria i testy schematu; ZR-07 — Argon2id i konta demo.
 - **Data:** 2026-11-04 (model), 2026-11-05 (JPA, testy, Argon2id).
 - **Wymagania:** R02, R04, R06, R09.
-- **Status:** model, migracje, mapowanie JPA i hashowanie zweryfikowane na PostgreSQL 16. Flyway wykonuje `V1`–`V3`, Hibernate startuje z `ddl-auto=validate`, a 17 testów jednostkowych i integracyjnych potwierdza ograniczenia, repozytoria oraz konta demo (`cd backend && ./mvnw verify`).
+- **Status:** model, migracje, mapowanie JPA i hashowanie zweryfikowane na PostgreSQL 16. Flyway wykonuje `V1`–`V3`, Hibernate startuje z `ddl-auto=validate`, a testy jednostkowe i integracyjne potwierdzają ograniczenia, repozytoria, konta demo oraz owner-scoped API wiadomości (`cd backend && ./mvnw spotless:check verify`). ZR-14 nie zmienia schematu.
 - **Kontrakt API:** [`docs/API.md`](API.md) — kanoniczny kontrakt HTTP, DTO, błędów i paginacji.
 
 ## Cele modelu

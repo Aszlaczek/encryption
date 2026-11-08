@@ -661,6 +661,31 @@ R03, R06.
 
 **Accepted — 2026-11-08.** Warstwa web mapuje typowane błędy kryptograficzne z ADR-16 na kontrakt HTTP: niepoprawna struktura, wersja i nieznany identyfikator klucza to `400`; błędny tag lub AAD to `422 DECRYPT_FAILED`. Tekst odpowiedzi jest stały i nie zawiera wartości wejściowej. Test integracyjny potwierdza `422` dla pakietu innego użytkownika i brak pola plaintext w błędzie.
 
+## ADR-17 — Owner-scoped API zapisanych wiadomości
+
+### Status
+
+**Accepted — 2026-11-08 (ZR-14).**
+
+### Decyzja
+
+1. `POST /api/messages` szyfruje przez istniejący `CryptoService` i zapisuje `EncryptedPayload` w jednej transakcji; DTO nie zawiera właściciela.
+2. Właściciel pochodzi wyłącznie z `AppUserPrincipal`. Wszystkie odczyty bazują na owner-scoped metodach `MessageRepository`; cudze i brakujące rekordy zwracają `404 MESSAGE_NOT_FOUND`.
+3. Lista używa `created_at DESC, id DESC` i kursora base64url `epochMicros:uuid`, limitu 1–50 zgodnego z kanonicznym `docs/API.md` (wartość 50 ma pierwszeństwo przed rozbieżną wzmianką 100 w karcie Notion).
+4. `GET /api/messages/{id}` zwraca wyłącznie DTO z pakietem. `POST /api/messages/{id}/decrypt` nie przyjmuje ciała, wymaga sesji oraz CSRF i zwraca plaintext tylko właścicielowi.
+5. Błędny zapisany pakiet jest mapowany do stałego `500 MESSAGE_UNDECRYPTABLE`; nie ujawniamy tekstu ani szczegółów szyfru.
+6. ZR-14 nie zmienia schematu ani migracji Flyway.
+
+### Konsekwencje
+
+- Dane są szyfrowane tą samą ścieżką co endpoint crypto i nie trafiają jako plaintext do bazy.
+- Kursor pozwala pobierać strony stabilnie bez `total`; warunek pozycji jest zawsze ograniczony właścicielem.
+- Usuwanie wiadomości oraz limity operacji szyfrujących pozostają w osobnym zakresie.
+
+### Powiązane wymagania
+
+R04, R06, R09.
+
 ---
 
 ## Zasady zmian decyzji

@@ -8,11 +8,11 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-08)
 
-- Ostatni commit funkcjonalny: ZR-13 (commit po weryfikacji); baza `6ea408f`.
-- Ukończone: ZR-01…ZR-13 (m.in. auth, AES-GCM i endpointy crypto).
-- Działa: endpointy auth oraz `POST /api/crypto/encrypt` i `/api/crypto/decrypt`, sesyjny właściciel, CSRF, limity DTO, kontrolowane błędy RFC 9457 i `no-store`.
-- **Nie ma jeszcze** endpointów `messages`, limitera crypto 60/30 na minutę oraz frontendu logowania. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
-- Testy: 110/110 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`).
+- Ostatni commit funkcjonalny: `7c10342` (ZR-13); ZR-14 w toku.
+- Ukończone: ZR-01…ZR-14.
+- Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`.
+- **Nie ma jeszcze** usuwania wiadomości, limitera crypto 60/30 na minutę oraz frontendu logowania. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
+- Testy: 113/113 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`).
 
 ## Najpierw przeczytaj
 
@@ -20,7 +20,7 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 2. [`README.md`](README.md) — status, uruchomienie, dowody R01–R10.
 3. [`docs/API.md`](docs/API.md) — **kanoniczny** kontrakt HTTP, DTO, błędy, format pakietu, kursor.
 4. [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — schemat, mapowanie JPA, migracje, Argon2id.
-5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-16.
+5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-17.
 6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q45 (rozstrzygnięte i otwarte).
 
 Gdy dokumenty się różnią, rozstrzyga `docs/API.md` dla HTTP i `docs/DATA_MODEL.md` dla bazy. Zmiana zachowania wymaga aktualizacji dokumentu i ADR w **tym samym commicie**.

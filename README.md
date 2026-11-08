@@ -2,7 +2,7 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-13 — działa API szyfrowania bez zapisu `POST /api/crypto/encrypt` i deszyfrowania pakietu `POST /api/crypto/decrypt`, chronione sesją i CSRF. Właściciel AAD pochodzi z principalu sesji; limity DTO to 10 000 punktów kodowych / 40 000 B UTF-8 plaintextu i 56 000 znaków pakietu. Błędy pakietu mają kontrolowany format RFC 9457, a odpowiedzi `/api/**` mają `no-store`. Backend: **110/110** testów. Endpointy wiadomości, frontend logowania, testy E2E i CI pozostają do wykonania.
+> **Status:** ZR-14 — działa zapis `POST /api/messages`, lista z paginacją kursorową `GET /api/messages`, szczegóły `GET /api/messages/{id}` i deszyfrowanie zapisanego rekordu `POST /api/messages/{id}/decrypt`. Wszystkie operacje są owner-scoped; baza przechowuje wyłącznie zaszyfrowaną kopertę i metadane. Limit listy jest zgodny z kanonicznym API: maksymalnie 50 (mimo rozbieżnego opisu 100 w karcie Notion). Pełne testy backendu: **113/113**. Usuwanie wiadomości, limiter crypto 60/30 na minutę, frontend logowania, testy E2E i CI pozostają do wykonania.
 
 **Repozytorium:** <https://github.com/Aszlaczek/encryption>
 
@@ -361,6 +361,7 @@ Konta są tworzone wyłącznie przy aktywnym profilu `local` (`application-local
 | Backend — konfiguracja i walidacja klucza | JUnit 5, `ApplicationContextRunner`, `@TempDir` | `CryptoKeyTests` (10) + `CryptoKeyStartupTests` (5): poprawny klucz inline/plik, priorytet pliku, brak klucza, zły base64, 16/33 B, nieznany `keyId`, brak pliku, brak wycieku klucza w `toString`, blokada startu kontekstu |
 | Backend — AES-GCM i kodek pakietu | JUnit 5, AssertJ | `PackageCodecTests` (23) + `CryptoServiceTests` (26): wektor z `docs/API.md`, kanoniczny base64url, round-trip Unicode/emoji/spacji/nowych linii, 100 unikalnych nonce dla tego samego tekstu, tag i nonce z innego szyfrogramu, granice 40 000 B, zły AAD/klucz bez zwracania plaintextu |
 | Backend — HTTP crypto | JUnit 5, MockMvc, Testcontainers PostgreSQL 16 | `CryptoControllerIntegrationTests` (4): round-trip właściciela, 401 anonimowego klienta, `422 DECRYPT_FAILED` dla pakietu innego właściciela, `400 INVALID_PACKAGE_FORMAT`, limity DTO i `no-store` |
+| Backend — HTTP messages | JUnit 5, MockMvc, Testcontainers PostgreSQL 16 | `MessageControllerIntegrationTests` (3): zapis tylko szyfrogramu, owner-scoped list/details/decrypt, stabilny kursor, max 50, anonimowy 401, identyczne 404 dla cudzej i brakującej wiadomości |
 | Backend — limiter i problem details | JUnit 5 | `LoginRateLimiterTests` (5), `AppUserPrincipalTests` (2), `ApiProblemFactoryTests` (2) |
 | Backend — format i higiena | Spotless, Enforcer | `cd backend && ./mvnw spotless:check verify` |
 | Schemat bazy i migracje | PostgreSQL 16, psql, Docker | `./scripts/validate-schema.sh` |
@@ -368,6 +369,32 @@ Konta są tworzone wyłącznie przy aktywnym profilu `local` (`application-local
 | Frontend — jednostkowe i komponentowe | Vitest, React Testing Library | `cd frontend && npm run test` |
 | Frontend — lint i format | ESLint, Prettier | `cd frontend && npm run lint && npm run format:check` |
 | Sekrety | `git grep`, `.gitignore` | `./scripts/check-secrets.sh` |
+
+Wynik ZR-14 (weryfikacja 2026-11-08; JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16.15):
+
+```text
+./mvnw -Dtest=MessageControllerIntegrationTests test -> 3/3, BUILD SUCCESS
+./mvnw spotless:check verify                       -> 113/113, BUILD SUCCESS
+./scripts/check-secrets.sh                         -> OK, brak sekretów w trackowanych plikach
+node scripts/validate-api-contract.mjs             -> OK, kontrakt, format pakietu i kursor
+git diff --check                                   -> OK
+```
+
+Scenariusze HTTP ZR-14:
+
+```text
+POST /api/messages Alice                         -> 201; pakiet w odpowiedzi, właściciel z sesji
+baza po zapisie                                   -> ciphertext/nonce/tag/key_id; brak kolumn plaintext/content/body
+GET szczegóły i POST decrypt Alice                -> 200; pakiet i plaintext zgodne
+GET lista Alice z ownerId innego UUID             -> tylko rekordy Alice; parametr właściciela ignorowany
+kursor, limit=2                                   -> strony bez duplikatów; stabilny created_at DESC, id DESC
+limit=51 / niepoprawny cursor                     -> 400 VALIDATION_FAILED / INVALID_CURSOR
+anonimowe GET/POST                                -> 401 UNAUTHENTICATED; decrypt wymaga CSRF (403 bez tokenu)
+cudza i nieistniejąca wiadomość                   -> identyczne 404 MESSAGE_NOT_FOUND
+uszkodzony tag w zapisanym rekordzie               -> 500 MESSAGE_UNDECRYPTABLE, bez plaintextu
+```
+
+Limit API pozostaje 1–50 zgodnie z kanonicznym `docs/API.md`; karta Notion miała niezgodną wartość 100, poprawioną podczas ZR-14.
 
 Wynik ZR-13 (weryfikacja 2026-11-08; JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16.15):
 

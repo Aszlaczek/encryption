@@ -3,11 +3,11 @@
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
 - **Ostatnia aktualizacja:** 2026-11-08
-- **Ostatni commit funkcjonalny:** ZR-13 w trakcie przygotowania; bazowy commit `6ea408f` — raport ZR-12
-- **Gałąź:** `main`, zsynchronizowana z `origin/main`
-- **Stan drzewa:** czysty
-- **Zadania ukończone:** ZR-01…ZR-13
-- **Następne zadanie:** endpointy wiadomości: create/list/get/delete, scope właściciela i paginacja kursorowa
+- **Ostatni commit funkcjonalny:** `de62f6a` — zapis, lista i odczyt wiadomości (ZR-14)
+- **Gałąź:** `main`, gotowa do push na `origin/main`
+- **Stan drzewa:** czysty po commicie
+- **Zadania ukończone:** ZR-01…ZR-14
+- **Następne zadanie:** usuwanie wiadomości, limity operacji crypto 60/min i 30/min
 
 ## 1. Cel projektu
 
@@ -36,13 +36,14 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 - Klucz AES-256 generowany jednorazowo do `.secrets/crypto.key`, montowany tylko do backendu jako sekret Compose; walidacja 32 B i `keyId=k1` przy starcie, brak lub błąd blokuje start.
 - `CryptoService` i `PackageCodec`: AES-256-GCM, nonce 12 B, tag 128 bitów, AAD `v1:<ownerId>:<keyId>`, kanoniczny base64url i walidacja pakietu; 49 testów jednostkowych, w tym wektor z `docs/API.md`, round-trip Unicode/emoji/nowych linii i granice rozmiaru.
 - `POST /api/crypto/encrypt` i `POST /api/crypto/decrypt`: DTO, właściciel z sesyjnego principalu, limity plaintextu/pakietu, CSRF, `no-store`, kontrolowane błędy RFC 9457; cztery integracyjne scenariusze HTTP.
+- Zapis, lista, szczegóły i deszyfrowanie zapisanych wiadomości: transakcyjny zapis przez `CryptoService`, scope właściciela z sesji, `404` dla cudzych/brakujących rekordów i kursor `(created_at, id)` zgodny z limitem API 1–50.
 - Błędy RFC 9457 z kodami `code`, `Cache-Control: no-store`, `X-Request-Id`, limit 65 536 B i `415` dla złego `Content-Type`.
 - Compose z trzema zdrowymi kontenerami, nginx jako jedyny publiczny punkt wejścia.
 - `/actuator/health` zwraca `200`; anonimowe `/api/messages` zwraca `401`.
 
 ### Jeszcze nie istnieje
 
-- endpointy `messages`, DTO wiadomości i paginacja przez HTTP,
+- usuwanie wiadomości,
 - limity szyfrowania/deszyfrowania (60/min i 30/min),
 - frontend logowania i obsługa CSRF w SPA,
 - testy E2E, konfiguracja CI, `docs/PERFORMANCE.md`,
@@ -52,7 +53,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 
 | Warstwa | Liczba | Uruchomienie |
 |---|---:|---|
-| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 110 | `cd backend && ./mvnw spotless:check verify` |
+| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 113 | `cd backend && ./mvnw spotless:check verify` |
 | Frontend (Vitest + Testing Library) | 3 | `cd frontend && npm test` |
 | E2E | 0 | brak |
 
@@ -77,7 +78,8 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-10 | `3712052` | 2026-11-07 | Generacja klucza AES, sekret plikowy tylko w backendzie, walidacja 32 B i `keyId=k1`, blokada startu | `./mvnw spotless:check verify` — 57/57, Compose, restart, brak/błędny klucz |
 | ZR-11 | `01bcd76` | 2026-11-08 | `CryptoService` i `PackageCodec`: AES-256-GCM, nonce 12 B, tag 128 bitów, AAD, walidacja pakietu, typowane błędy | `./mvnw spotless:check verify` — 97/97; 40 nowych testów; Compose health=200; brak importów HTTP/JPA |
 | ZR-12 | `a8acf35` | 2026-11-08 | Testy jednostkowe kryptografii: round-trip Unicode/emoji/spacji/nowych linii, 100 unikalnych nonce, tag/nonce z innego szyfrogramu, granice UTF-8, Base64 i minimum ciphertext | `./mvnw spotless:check verify` — 106/106; 9 nowych testów; AAD właściciela odrzucony |
-| ZR-13 | *(commit po weryfikacji)* | 2026-11-08 | DTO i endpointy bezstanowego szyfrowania/deszyfrowania, sesyjny właściciel AAD, limity i mapowanie błędów domenowych na RFC 9457 | `./mvnw spotless:check verify` — 110/110; 4 scenariusze HTTP; walidator kontraktu i skan sekretów OK |
+| ZR-13 | `7c10342` | 2026-11-08 | DTO i endpointy bezstanowego szyfrowania/deszyfrowania, sesyjny właściciel AAD, limity i mapowanie błędów domenowych na RFC 9457 | `./mvnw spotless:check verify` — 110/110; 4 scenariusze HTTP; walidator kontraktu i skan sekretów OK |
+| ZR-14 | `de62f6a` | 2026-11-08 | Transakcyjny zapis, lista z kursorem, szczegóły i deszyfrowanie zapisanych wiadomości z kontrolą owner scope | `./mvnw spotless:check verify` — 113/113; 3 scenariusze HTTP; skan sekretów, walidator kontraktu i diff check OK |
 
 ### ZR-01 — zakres i decyzje
 
@@ -286,6 +288,27 @@ git diff --check                                   -> OK
 
 Round-trip zalogowanej Alice zakończył się `200`, a odpowiedź zawierała odszyfrowany oryginalny tekst i `no-store`. Anonimowy klient otrzymał `401 UNAUTHENTICATED`. Pakiet Alice przesłany z sesji Boba zwrócił `422 DECRYPT_FAILED` bez plaintextu; błędna struktura zwróciła `400 INVALID_PACKAGE_FORMAT`. Limity 10 001 code points (400 validation) i 10 000 emoji/40 000 B (sukces) zostały sprawdzone.
 
+### ZR-14 — zapis, lista i odczyt wiadomości
+
+- Dodano `POST /api/messages`, `GET /api/messages`, `GET /api/messages/{id}` i `POST /api/messages/{id}/decrypt`. Zapis szyfruje przez istniejący `CryptoService` wewnątrz transakcyjnego serwisu i zapisuje tylko kopertę; brak plaintextu w schemacie i odpowiedziach listy.
+- Właściciel jest pobierany z principalu sesji. Repozytoria są wyłącznie owner-scoped; nieistniejący i cudzy UUID mają identyczne `404 MESSAGE_NOT_FOUND`. Zapisane, nieodszyfrowywalne koperty dają `500 MESSAGE_UNDECRYPTABLE` bez szczegółów.
+- Paginacja używa `created_at DESC, id DESC` i nieprzezroczystego kanonicznego base64url kursora `epochMicros:uuid`. Publiczny limit pozostaje 1–50 zgodnie z `docs/API.md`; opis limitu 100 w karcie Notion rozbiega się z kanonicznym kontraktem.
+- Deszyfrowanie zapisanej wiadomości to POST bez ciała, wymaga sesji i CSRF; filtr transportowy dopuszcza tę ścieżkę bez wymaganego `Content-Type`. Nie zmieniano migracji ani schematu.
+- Zależności ZR-06, ZR-08, ZR-11 oraz ZR-13 są obecne: `65504f2`, `fb2c9b5`, `01bcd76` i `7c10342`.
+- Integracyjne `MessageControllerIntegrationTests` sprawdzają zapis szyfrogramu, odczyt pakietu i decrypt, izolację Alice/Bob, kursor dwóch stron bez duplikatów, limit 50, złe kursory/ID, anonimowe 401 oraz 404 dla obcego/brakującego rekordu.
+
+Weryfikacja ZR-14 (2026-11-08; JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16.15):
+
+```text
+./mvnw -Dtest=MessageControllerIntegrationTests test -> 3/3, BUILD SUCCESS
+./mvnw spotless:check verify                       -> 113/113, BUILD SUCCESS
+./scripts/check-secrets.sh                         -> OK, brak sekretów w trackowanych plikach
+node scripts/validate-api-contract.mjs             -> OK (28 przykładów JSON, 12 endpointów, kursor)
+git diff --check                                   -> OK
+```
+
+Weryfikacja HTTP potwierdziła zapis tylko koperty i metadanych (brak kolumn plaintext/content/body; ciphertext różni się od jawnego UTF-8), round-trip, owner scope dla listy i szczegółów, 401 anonimowego klienta, CSRF dla decrypt, 404 dla cudzej/brakującej wiadomości, stabilny kursor bez duplikatów oraz `500 MESSAGE_UNDECRYPTABLE` dla celowo uszkodzonego tagu. Parametr `ownerId` nie rozszerza zakresu listy.
+
 Weryfikacja ZR-12 (2026-11-08; JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16.15):
 
 ```text
@@ -306,7 +329,7 @@ git diff --check                                         -> OK
 ├── docs/
 │   ├── API.md                # kanoniczny kontrakt HTTP
 │   ├── DATA_MODEL.md         # schemat, JPA, migracje
-│   ├── DECISIONS.md          # ADR-01, ADR-07…ADR-14
+│   ├── DECISIONS.md          # ADR-01, ADR-07…ADR-17
 │   ├── OPEN_QUESTIONS.md     # Q01…Q45
 │   └── PROJECT_MEMORY.md     # ten dokument
 ├── scripts/
@@ -322,7 +345,7 @@ Backend stosuje podział package-by-feature:
 
 - `auth/` — `AppUser`, `AppUserPrincipal`, repozytorium, normalizacja, konta demo, `AuthService`, `LogoutService`, limiter,
 - `auth/api/` — DTO i kontroler `/api/auth`,
-- `message/` — `Message`, `MessageRepository`, w przyszłości serwis i kontroler,
+- `message/` — `Message`, repozytorium, serwis owner-scoped, kursor i API wiadomości,
 - `crypto/` — `CryptoProperties`, `CryptoKey`, `CryptoService`, `PackageCodec`, `EncryptedPayload` i błędy domenowe AES-256-GCM,
 - `common/security/` — `PasswordEncoderConfig`, `SecurityFilterChain`, CSRF, obsługa `401`/`403`,
 - `common/web/` — RFC 9457, limity transportu, nagłówki, walidatory.
@@ -391,11 +414,11 @@ Konfiguracja:
 
 ## 7. Kontrakt API — stan
 
-`docs/API.md` jest kanonicznym kontraktem. Zaimplementowane są endpointy auth, sesja, CSRF i wspólne błędy. Pozostałe endpointy są nadal kontraktem do wykonania.
+`docs/API.md` jest kanonicznym kontraktem.
 
-- **Gotowe:** `GET /api/auth/csrf`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, sesja `JSESSIONID`, CSRF, RFC 9457 z `code`, kolejność `401` przed `403`, limity transportu, `429` dla logowania; warstwa `CryptoService`/`PackageCodec` gotowa do użycia przez endpointy.
-- **Do wykonania:** `POST /api/crypto/encrypt`, `POST /api/crypto/decrypt`, `GET/POST /api/messages`, `GET/DELETE /api/messages/{id}`, limity szyfrowania/deszyfrowania.
-- Właściciel nadal pochodzi wyłącznie z sesji; dotyczy to przyszłych endpointów wiadomości.
+- **Gotowe:** auth, `POST /api/crypto/encrypt`, `POST /api/crypto/decrypt`, `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`; sesja, CSRF, błędy RFC 9457 i `no-store`.
+- **Do wykonania:** `DELETE /api/messages/{id}`, limity szyfrowania/deszyfrowania 60/min i 30/min.
+- Właściciel we wszystkich ścieżkach pochodzi wyłącznie z sesji.
 
 Założenia formatu:
 
@@ -406,7 +429,7 @@ AAD:    v1:<ownerId>:<keyId>
 
 ## 8. Inwentarz testów
 
-### Backend — 106 testów
+### Backend — 113 testów
 
 | Klasa | Liczba | Co sprawdza |
 |---|---:|---|
@@ -417,6 +440,8 @@ AAD:    v1:<ownerId>:<keyId>
 | `CryptoKeyStartupTests` | 5 | poprawny start i blokada kontekstu dla braku klucza, złego base64, złej długości i nieznanego `keyId` |
 | `PackageCodecTests` | 23 | wektor i kanoniczny base64url, przycinanie ASCII, wersja, `key_id`, długości nonce/tag/ciphertext, minimum 1 B i maksimum 40 000 B, defensywne kopie |
 | `CryptoServiceTests` | 26 | AES-GCM round-trip Unicode/emoji/spacji/nowych linii, świeże nonce (także 100× ten sam tekst), zły tag/nonce/AAD/klucz, wersja, Base64, granice 40 000 B |
+| `CryptoControllerIntegrationTests` | 4 | szyfrowanie/deszyfrowanie HTTP, sesja, CSRF, izolacja pakietów i limity |
+| `MessageControllerIntegrationTests` | 3 | zapis bez plaintextu, owner scope, szczegóły/decrypt, paginacja kursorowa, 404, auth i CSRF |
 | `DemoUserSeedingIntegrationTests` | 4 | dwa konta z hashami Argon2id, dopasowanie haseł, idempotencja bez nadpisywania, brak plaintextu w bazie, principal z `id` |
 | `LoginRateLimiterTests` | 5 | blokada szóstej próby, okno 60 s, reset po sukcesie, niezależność kluczy IP/login, starzenie wpisów |
 | `UsernameNormalizerTests` | 3 | trim/lowercase, puste dane, `null` |
@@ -516,7 +541,7 @@ Kolejność rekomendowana:
 2. ~~**Walidacja i błędy**~~ — wykonane w ZR-08 dla auth i transportu; kolejne DTO dołączą własne walidatory.
 3. ~~**Konfiguracja i trwałość klucza**~~ — wykonane w ZR-10: generacja, sekret Compose tylko w backendzie, walidacja startowa, ADR-15.
 4. ~~**Kryptografia**~~ — wykonane w ZR-11 i pokryte testami jednostkowymi w ZR-12: `CryptoService` AES-256-GCM, `PackageCodec`, format pakietu, AAD, walidacja nonce/tag/długości, wektory z `docs/API.md`.
-5. **Endpointy wiadomości** — create/list/get/delete, owner scope, `404` dla obcych zasobów i paginacja kursorowa. Limity operacji crypto 60/min i 30/min nadal wymagają implementacji.
+5. ~~**Zapis, lista i odczyt wiadomości**~~ — wykonane w ZR-14; pozostaje endpoint usuwania oraz limity operacji crypto 60/min i 30/min.
 6. **Frontend** — formularz logowania, obsługa CSRF, lista i edytor wiadomości, stany błędów, testy komponentów.
 7. **E2E** — Playwright: logowanie, izolacja użytkowników, CRUD, wylogowanie, błędy walidacji.
 8. **CI i wydajność** — workflow GitHub Actions, `docs/PERFORMANCE.md`, testy obciążeniowe i analiza pamięci Argon2id.
@@ -524,7 +549,7 @@ Kolejność rekomendowana:
 Warunki wejścia do kolejnego zadania:
 
 - drzewo czyste i `main == origin/main`,
-- 110/110 testów backendu i 3/3 frontendu,
+- 113/113 testów backendu i 3/3 frontendu,
 - Compose z trzema zdrowymi kontenerami,
 - dokumentacja i ADR zaktualizowane w tym samym commicie,
 - wpis do Notion z rzeczywistym hashem commita i wynikami komend.

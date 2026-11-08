@@ -4,6 +4,11 @@ import com.szlaczek.backend.auth.InvalidCredentialsException;
 import com.szlaczek.backend.auth.RateLimitedException;
 import com.szlaczek.backend.crypto.CryptoError;
 import com.szlaczek.backend.crypto.CryptoException;
+import com.szlaczek.backend.message.InvalidCursorException;
+import com.szlaczek.backend.message.MessageNotFoundException;
+import com.szlaczek.backend.message.MessageUndecryptableException;
+import com.szlaczek.backend.message.api.InvalidMessageIdException;
+import com.szlaczek.backend.message.api.InvalidPageSizeException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Comparator;
 import java.util.List;
@@ -22,6 +27,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
 
@@ -148,6 +154,52 @@ public class ApiExceptionHandler {
                     HttpStatus.UNPROCESSABLE_ENTITY, CryptoError.DECRYPT_FAILED.name(),
                     "Nie udało się odszyfrować pakietu.", request);
         };
+    }
+
+    @ExceptionHandler(InvalidCursorException.class)
+    public ResponseEntity<ApiProblem> handleInvalidCursor(
+            InvalidCursorException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, "INVALID_CURSOR", "Niepoprawny kursor paginacji.", request);
+    }
+
+    @ExceptionHandler(InvalidMessageIdException.class)
+    public ResponseEntity<ApiProblem> handleInvalidMessageId(
+            InvalidMessageIdException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, "INVALID_MESSAGE_ID", "Niepoprawny identyfikator wiadomości.", request);
+    }
+
+    @ExceptionHandler(InvalidPageSizeException.class)
+    public ResponseEntity<ApiProblem> handleInvalidPageSize(
+            InvalidPageSizeException exception, HttpServletRequest request) {
+        FieldViolation violation = new FieldViolation("limit", "OUT_OF_RANGE",
+                "Limit musi mieścić się w zakresie 1–50.");
+        return problem(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Parametr limit jest nieprawidłowy.", request,
+                List.of(violation));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiProblem> handleQueryTypeMismatch(
+            MethodArgumentTypeMismatchException exception, HttpServletRequest request) {
+        FieldViolation violation = new FieldViolation(
+                exception.getName(), "INVALID_FORMAT", "Parametr ma nieprawidłowy format.");
+        return problem(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Parametr zapytania jest nieprawidłowy.", request,
+                List.of(violation));
+    }
+
+    @ExceptionHandler(MessageNotFoundException.class)
+    public ResponseEntity<ApiProblem> handleMessageNotFound(
+            MessageNotFoundException exception, HttpServletRequest request) {
+        return problem(HttpStatus.NOT_FOUND, "MESSAGE_NOT_FOUND", "Nie znaleziono wiadomości.", request);
+    }
+
+    @ExceptionHandler(MessageUndecryptableException.class)
+    public ResponseEntity<ApiProblem> handleMessageUndecryptable(
+            MessageUndecryptableException exception, HttpServletRequest request) {
+        return problem(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "MESSAGE_UNDECRYPTABLE",
+                "Nie można odszyfrować zapisanej wiadomości.",
+                request);
     }
 
     @ExceptionHandler(Exception.class)
