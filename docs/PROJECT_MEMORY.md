@@ -3,7 +3,7 @@
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
 - **Ostatnia aktualizacja:** 2026-11-08
-- **Ostatni commit funkcjonalny:** `TBD` — `test(crypto): pokryj round-trip, AAD i granice kryptografii (ZR-12)`
+- **Ostatni commit funkcjonalny:** `a8acf35` — `test(crypto): pokryj round-trip, AAD i granice kryptografii (ZR-12)`
 - **Gałąź:** `main`, zsynchronizowana z `origin/main`
 - **Stan drzewa:** czysty
 - **Zadania ukończone:** ZR-01…ZR-12
@@ -75,7 +75,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-09 | `a372022` | 2026-11-06 | Test HTTP wygaśnięcia okna limitera z kontrolowanym `Clock`; bez rzeczywistego oczekiwania 60 s | `./mvnw spotless:check verify` — 42/42, `AuthRateLimitWindowIntegrationTests` 1/1 |
 | ZR-10 | `3712052` | 2026-11-07 | Generacja klucza AES, sekret plikowy tylko w backendzie, walidacja 32 B i `keyId=k1`, blokada startu | `./mvnw spotless:check verify` — 57/57, Compose, restart, brak/błędny klucz |
 | ZR-11 | `01bcd76` | 2026-11-08 | `CryptoService` i `PackageCodec`: AES-256-GCM, nonce 12 B, tag 128 bitów, AAD, walidacja pakietu, typowane błędy | `./mvnw spotless:check verify` — 97/97; 40 nowych testów; Compose health=200; brak importów HTTP/JPA |
-| ZR-12 | `TBD` | 2026-11-08 | Testy jednostkowe kryptografii: round-trip Unicode/emoji/spacji/nowych linii, 100 unikalnych nonce, tag/nonce z innego szyfrogramu, granice UTF-8, Base64 i minimum ciphertext | `./mvnw spotless:check verify` — 106/106; 9 nowych testów; AAD właściciela odrzucony |
+| ZR-12 | `a8acf35` | 2026-11-08 | Testy jednostkowe kryptografii: round-trip Unicode/emoji/spacji/nowych linii, 100 unikalnych nonce, tag/nonce z innego szyfrogramu, granice UTF-8, Base64 i minimum ciphertext | `./mvnw spotless:check verify` — 106/106; 9 nowych testów; AAD właściciela odrzucony |
 
 ### ZR-01 — zakres i decyzje
 
