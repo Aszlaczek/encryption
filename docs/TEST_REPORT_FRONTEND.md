@@ -4,7 +4,7 @@
 - **Zadanie:** ZR-17 — frontend logowania i klient API
 - **Wymagania:** R01, R02, R08
 - **Zależności potwierdzone:** ZR-04 (`5cf29ca`), ZR-08 (`fb2c9b5`), ZR-15 (`a310d9e`)
-- **Commit funkcjonalny:** (hash w commicie statusowym)
+- **Commit funkcjonalny:** `c51a319`
 - **Zakres kodu:** `frontend/src/shared/api/`, `frontend/src/features/auth/`, `frontend/src/app/App.tsx`, `frontend/vite.config.ts`, `frontend/src/styles/global.css`
 
 ## 1. Środowisko
