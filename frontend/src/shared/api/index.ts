@@ -1,6 +1,4 @@
-/**
- * Shared API layer.
- *
- * Planned: typed HTTP client, RFC 9457 problem details parsing and request id propagation.
- */
-export {};
+export { apiRequest, resetCsrfToken } from './client';
+export type { RequestOptions } from './client';
+export { ApiError } from './types';
+export type { ApiProblem, FieldViolation } from './types';

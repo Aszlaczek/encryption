@@ -712,6 +712,35 @@ R06, R10.
 
 ---
 
+## ADR-19 — Klient API i sesja SPA
+
+### Status
+
+**Accepted — 2026-11-13 (ZR-17).**
+
+### Decyzja
+
+1. Frontend używa jednego klienta `apiRequest` w `src/shared/api/`: `fetch` z `credentials: 'same-origin'`, `cache: 'no-store'`, JSON i parsowaniem błędów RFC 9457 do `ApiError` (`status`, `code`, `detail`, `fieldErrors`, `retryAfterSeconds`).
+2. Sesja pozostaje wyłącznie po stronie backendu w cookie `JSESSIONID` (`HttpOnly`, `SameSite=Lax`). Frontend nie zapisuje użytkownika, hasła ani wiadomości w `localStorage`, `sessionStorage` ani IndexedDB; stan sesji żyje tylko w pamięci Reacta.
+3. Token CSRF jest czytany z cookie `XSRF-TOKEN` i wysyłany jako `X-XSRF-TOKEN` tylko dla metod mutujących. Gdy cookie nie istnieje, klient pobiera token z `GET /api/auth/csrf`. Po udanym logowaniu i wylogowaniu token w pamięci jest resetowany, ponieważ backend go rotuje.
+4. Odpowiedź `403 CSRF_INVALID` powoduje jednorazowe odświeżenie tokenu i jedną ponowną próbę tego samego żądania. Druga odpowiedź `403` jest zwracana jako błąd; klient nie zapętla retry.
+5. `GET /api/auth/me` przy starcie rozstrzyga stan sesji: `200` → zalogowany, `401` → anonimowy bez błędu, `5xx`/sieć → ekran błędu z ręcznym retry. `401` z wylogowania oznacza sesję już wygasłą i kończy się stanem anonimowym.
+6. Formularz logowania używa `<label>`, hintów, `aria-describedby` (hint + błąd), `aria-invalid`, `aria-busy` i fokusu na alercie lub pierwszym błędnym polu. Login jest trimowany, hasło nigdy nie jest trimowane. `400` mapuje `errors[]` na pola, `401` daje komunikat bez rozróżniania konta, a `429` pokazuje `Retry-After`.
+7. Tryb developerski Vite proxuje `/api` i `/actuator` na `http://localhost:8080`; cel można nadpisać przez `VITE_API_PROXY_TARGET`. W Compose ten sam origin zapewnia nginx.
+
+### Konsekwencje
+
+- Odświeżenie strony zachowuje sesję dzięki cookie, ale frontend nie ma kopii danych uwierzytelniających, która mogłaby wyciec przez XSS.
+- Rotacja CSRF po logowaniu jest obsłużona bez przechowywania tokenu w storage; ewentualny rozjazd naprawia jednorazowy retry.
+- Formularz jest dostępny dla czytników ekranu i klawiatury, a błędy pól są powiązane z konkretnym `input`.
+- Testy komponentów mockują `fetch`; realną integrację z nginx, cookie i CSRF potwierdza smoke Playwright. Formalne E2E i axe pozostają osobnym zadaniem.
+
+### Powiązane wymagania
+
+R01, R02, R08.
+
+---
+
 ## Zasady zmian decyzji
 
 - Zmiana zaakceptowanej decyzji wymaga nowego wpisu lub wyraźnego oznaczenia poprzedniego jako `Superseded`.

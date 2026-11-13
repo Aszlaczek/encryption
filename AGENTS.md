@@ -8,11 +8,11 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-13)
 
-- Ostatni commit funkcjonalny: `d960326` (ZR-16); drzewo powinno być czyste.
-- Ukończone: ZR-01…ZR-16.
-- Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`.
-- **Nie ma jeszcze** usuwania wiadomości, limitera crypto 60/30 na minutę oraz frontendu logowania. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
-- Testy: 125/125 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`); raport izolacji A/B w [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md).
+- Ostatni commit funkcjonalny: ZR-17 (hash w commicie statusowym); drzewo powinno być czyste.
+- Ukończone: ZR-01…ZR-17.
+- Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem.
+- **Nie ma jeszcze** usuwania wiadomości, limitera crypto 60/30 na minutę oraz UI listy/edytora wiadomości. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
+- Testy: 125/125 backendu (`./mvnw spotless:check verify`), 26/26 frontendu (`npm test`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md).
 
 ## Najpierw przeczytaj
 
@@ -20,9 +20,10 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 2. [`README.md`](README.md) — status, uruchomienie, dowody R01–R10.
 3. [`docs/API.md`](docs/API.md) — **kanoniczny** kontrakt HTTP, DTO, błędy, format pakietu, kursor.
 4. [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — schemat, mapowanie JPA, migracje, Argon2id.
-5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-17.
-6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q45 (rozstrzygnięte i otwarte).
+5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-19.
+6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q46 (rozstrzygnięte i otwarte).
 7. [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) — raport testów negatywnych ZR-16 (izolacja A/B, persystencja, kontrola mutacyjna).
+8. [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) — testy klienta, formularza i sesji oraz smoke Playwright ZR-17.
 
 Gdy dokumenty się różnią, rozstrzyga `docs/API.md` dla HTTP i `docs/DATA_MODEL.md` dla bazy. Zmiana zachowania wymaga aktualizacji dokumentu i ADR w **tym samym commicie**.
 
@@ -129,7 +130,10 @@ docker compose exec -T db psql -U encryption -d encryption -c 'select username, 
 - **Jedno miejsce walidacji pakietu** — tylko `PackageCodec` parsuje i buduje `v1.<key_id>.<nonce>.<ciphertext>.<tag>`; wymagany jest kanoniczny base64url bez paddingu i ASCII. AAD to `v1:<ownerId>:<keyId>`, a właściciel pochodzi z sesji.
 - **Utrata klucza jest nieodwracalna** — brak automatycznej rotacji i odzyskiwania w MVP. Zmiana pliku po zapisaniu wiadomości czyni je nieczytelnymi; kopia zapasowa jest obowiązkiem operatora.
 - **`SESSION_COOKIE_SECURE=false` lokalnie** — wdrożenie za HTTPS musi ustawić `true`, inaczej cookie nie zostanie odesłane lub będzie niebezpieczne.
+- **Sesja frontendu tylko w cookie** — `JSESSIONID` jest `HttpOnly`; nie dodawaj `localStorage`/`sessionStorage`/IndexedDB dla użytkownika, hasła ani wiadomości. Stan Reacta jest jedyną kopią po stronie klienta.
+- **CSRF w SPA** — token czytaj z cookie `XSRF-TOKEN`, wysyłaj tylko dla mutacji; po logowaniu/wylogowaniu resetuj token, a `403 CSRF_INVALID` obsłuż jedną ponowną próbą po `/api/auth/csrf`.
+- **Case-insensitive macOS** — nie twórz plików różniących się tylko wielkością liter (np. `FormField.tsx` i `formField.ts`), bo import może wskazać zły moduł i komponent będzie `undefined`.
 
 ## Następny krok
 
-Implementacja `DELETE /api/messages/{id}` (twarde usunięcie, `404` dla cudzej/nieistniejącej/powtórnej) oraz limiterów operacji crypto: 60/min szyfrowanie i 30/min deszyfrowanie, per użytkownik, oba endpointy danej operacji łącznie, z `429` i `Retry-After`. Potem frontend logowania, testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).
+UI listy, edytora i usuwania wiadomości w React (wykorzystanie wspólnego klienta API i sesji z ZR-17), a następnie `DELETE /api/messages/{id}` i limitery crypto 60/min i 30/min. Potem formalne testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).

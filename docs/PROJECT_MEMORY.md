@@ -3,11 +3,11 @@
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
 - **Ostatnia aktualizacja:** 2026-11-13
-- **Ostatni commit funkcjonalny:** `d960326` — testy izolacji użytkowników i persystencji (ZR-16)
+- **Ostatni commit funkcjonalny:** (hash w commicie statusowym) — frontend logowania i klient API (ZR-17)
 - **Gałąź:** `main`, gotowa do push na `origin/main`
 - **Stan drzewa:** czysty po commicie
-- **Zadania ukończone:** ZR-01…ZR-16
-- **Następne zadanie:** usuwanie wiadomości i limity operacji crypto 60/min i 30/min
+- **Zadania ukończone:** ZR-01…ZR-17
+- **Następne zadanie:** UI listy i edytora wiadomości; opcjonalnie `DELETE /api/messages/{id}` i limitery crypto 60/30
 
 ## 1. Cel projektu
 
@@ -41,12 +41,13 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 - Compose z trzema zdrowymi kontenerami, nginx jako jedyny publiczny punkt wejścia.
 - `/actuator/health` zwraca `200`; anonimowe `/api/messages` zwraca `401`.
 - Izolacja dwóch użytkowników i persystencja pokryte `MessageIsolationIntegrationTests` (10 testów): lista, szczegóły, deszyfrowanie zapisanej wiadomości i wklejonego pakietu, sesja, CSRF, SQL injection oraz faktyczne wiersze PostgreSQL i historia Flyway; raport w `docs/TEST_REPORT.md`.
+- Frontend logowania i wspólny klient API: `JSESSIONID` w cookie, CSRF z `XSRF-TOKEN` tylko dla mutacji, `/me` przy starcie (401 = anonim), formularz z etykietami/hintami/błędami pól, mapowanie `400`/`401`/`429`, stan oczekiwania, wylogowanie i brak danych w `localStorage`/`sessionStorage`/IndexedDB; 26 testów i smoke Playwright w `docs/TEST_REPORT_FRONTEND.md`.
 
 ### Jeszcze nie istnieje
 
 - usuwanie wiadomości,
 - limity szyfrowania/deszyfrowania (60/min i 30/min),
-- frontend logowania i obsługa CSRF w SPA,
+- UI listy, edytora i usuwania wiadomości,
 - testy E2E, konfiguracja CI, `docs/PERFORMANCE.md`,
 - rotacja kluczy i obsługa wielu aktywnych kluczy.
 
@@ -55,7 +56,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 | Warstwa | Liczba | Uruchomienie |
 |---|---:|---|
 | Backend (JUnit 5, Testcontainers PostgreSQL 16) | 125 | `cd backend && ./mvnw spotless:check verify` |
-| Frontend (Vitest + Testing Library) | 3 | `cd frontend && npm test` |
+| Frontend (Vitest + Testing Library) | 26 | `cd frontend && npm test` |
 | E2E | 0 | brak |
 
 Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose budują się z `-DskipTests`, więc testy trzeba uruchomić osobno.
@@ -83,6 +84,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-14 | `66fce7a` | 2026-11-08 | Transakcyjny zapis, lista z kursorem, szczegóły i deszyfrowanie zapisanych wiadomości z kontrolą owner scope | `./mvnw spotless:check verify` — 113/113; 3 scenariusze HTTP; skan sekretów, walidator kontraktu i diff check OK |
 | ZR-15 | `a310d9e` | 2026-11-08 | Stabilne kody Bean Validation dla punktów kodowych i bajtów UTF-8; testy granic hasła/tekstu, RFC 9457 i brak echo odrzuconych treści | `./mvnw spotless:check verify` — 115/115; `AuthIntegrationTests`, `CryptoControllerIntegrationTests`, `MessageControllerIntegrationTests` — 24/24; skan sekretów i walidator API OK |
 | ZR-16 | `d960326` | 2026-11-13 | Testy izolacji A/B i persystencji: lista, szczegóły, decrypt zapisanej wiadomości i wklejonego pakietu, sesja, CSRF, SQL injection, faktyczne wiersze bazy i Flyway | `./mvnw -Dtest=MessageIsolationIntegrationTests test` — 10/10; `./mvnw spotless:check verify` — 125/125; kontrola mutacyjna 8/10 FAIL po usunięciu owner scope; raport `docs/TEST_REPORT.md` |
+| ZR-17 | (hash w commicie statusowym) | 2026-11-13 | Wspólny klient HTTP z CSRF i RFC 9457; sesja `/me` z 401 = anonim; dostępny formularz logowania, mapowanie błędów, wylogowanie; brak storage; proxy dev | `npm run lint`, `format:check`, `npm test` — 26/26, `npm run build`; Compose 3 healthy; smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
 
 ### ZR-01 — zakres i decyzje
 
@@ -332,9 +334,10 @@ git diff --check                                         -> OK
 ├── docs/
 │   ├── API.md                # kanoniczny kontrakt HTTP
 │   ├── DATA_MODEL.md         # schemat, JPA, migracje
-│   ├── DECISIONS.md          # ADR-01, ADR-07…ADR-17
-│   ├── OPEN_QUESTIONS.md     # Q01…Q45
+│   ├── DECISIONS.md          # ADR-01, ADR-07…ADR-19
+│   ├── OPEN_QUESTIONS.md     # Q01…Q46
 │   ├── TEST_REPORT.md        # raport testów negatywnych ZR-16 (izolacja A/B, persystencja)
+│   ├── TEST_REPORT_FRONTEND.md # testy klienta, logowania i sesji oraz smoke ZR-17
 │   └── PROJECT_MEMORY.md     # ten dokument
 ├── scripts/
 │   ├── check-secrets.sh
@@ -455,9 +458,14 @@ AAD:    v1:<ownerId>:<keyId>
 | `ApiProblemFactoryTests` | 2 | RFC 9457, `traceId`, `instance`, lista błędów pól |
 | `PasswordEncoderConfigTests` | 1 | parametry Argon2id, długość 97, dopasowanie poprawnego i błędnego hasła, sól, hasło 128 B |
 
-### Frontend — 3 testy
+### Frontend — 26 testów
 
-`frontend/src/app/App.test.tsx`: nagłówek `Szyfrowanie wiadomości`, link do repozytorium, landmark `main` i skip link.
+| Plik | Liczba | Co sprawdza |
+|---|---:|---|
+| `src/shared/api/client.test.ts` | 8 | brak CSRF dla GET, token z cookie dla POST, pobranie `/api/auth/csrf`, parsowanie RFC 9457/`Retry-After`, fallback dla nie-JSON, jednorazowy retry po `CSRF_INVALID`, `204` |
+| `src/features/auth/LoginForm.test.tsx` | 8 | etykiety/hinty, `aria-describedby` i `aria-invalid`, blokada pustego submita, trim loginu bez trimowania hasła, stan pending, `400`/`401`/`429`, błąd sieci, fokus na błędzie |
+| `src/features/auth/AuthProvider.test.tsx` | 7 | `/me` 200/401/500 z retry, login i brak `ownerId`, logout `204`/`401`/`500`, pusty storage i brak hasła w cookies |
+| `src/app/App.test.tsx` | 3 | nagłówek, link do repozytorium, landmark `main` i skip link |
 
 ### Braki
 
@@ -482,16 +490,21 @@ AAD:    v1:<ownerId>:<keyId>
 | ADR-13 | Argon2id i konta demo | Parametry Argon2id, BouncyCastle, hash 97 znaków, seed tylko w profilu `local`, limit hasła 128 B |
 | ADR-14 | Logowanie, sesja i CSRF | Ręczny login JSON, sesja serwerowa, rotacja sesji i CSRF, `401` przed `403`, limiter 5/60 s, cookie `HttpOnly`/`SameSite=Lax`, `SESSION_COOKIE_SECURE` |
 | ADR-15 | Klucz szyfrujący | Jednorazowa generacja 32 B, sekret plikowy tylko w backendzie, walidacja `keyId=k1`, brak fallbacku demo, utrata klucza = utrata danych, brak rotacji w MVP |
+| ADR-16 | CryptoService i kodek | AES-256-GCM, nonce 12 B, tag 16 B, AAD `v1:<ownerId>:<keyId>`, kanoniczny base64url, jedno miejsce walidacji pakietu |
+| ADR-17 | Owner-scoped API wiadomości | Zapis/lista/szczegóły/decrypt tylko dla sesyjnego właściciela, `404` dla obcych, kursor i limity |
+| ADR-18 | Walidacja i problem details | Punkty kodowe i bajty UTF-8, stabilne kody pól, brak odbicia wejścia, `no-store`, `X-Request-Id` |
+| ADR-19 | Klient API i sesja SPA | Sesja wyłącznie w cookie `JSESSIONID`, CSRF z cookie, brak `localStorage`, jednorazowy retry `CSRF_INVALID`, `/me` 401 = anonim |
 
 ### Otwarte kwestie
 
-`docs/OPEN_QUESTIONS.md` zawiera Q01–Q45. Ostatnie przyjęte ustalenia:
+`docs/OPEN_QUESTIONS.md` zawiera Q01–Q46. Ostatnie przyjęte ustalenia:
 
 - Q06 — polityka haseł demo i parametry Argon2id,
 - Q32 — migracje `V1`–`V3` i seed w warstwie aplikacji,
 - Q43 — mapowanie JPA i repozytoria,
 - Q44 — źródło i profil kont demo,
-- Q45 — logowanie, sesja, CSRF i limiter.
+- Q45 — logowanie, sesja, CSRF i limiter,
+- Q46 — sesja i CSRF w SPA (cookie-only, brak storage).
 
 Przed rozpoczęciem nowego zadania sprawdź, czy nie ma otwartego pytania dotyczącego jego zakresu.
 
@@ -515,6 +528,8 @@ Te zasady wynikają z ADR i nie powinny być zmieniane bez nowej decyzji:
 14. Sekrety nie trafiają do repozytorium; `.env.example` zawiera placeholdery.
 15. Logowanie zawsze wymaga CSRF; po logowaniu rotują się identyfikator sesji i token CSRF.
 16. `JSESSIONID` jest `HttpOnly` i `SameSite=Lax`; `Secure` włącza się przez `SESSION_COOKIE_SECURE` i jest wymagane poza lokalnym HTTP.
+17. Frontend nie zapisuje sesji, hasła ani treści wiadomości w `localStorage`, `sessionStorage` ani IndexedDB; stan użytkownika żyje tylko w pamięci Reacta.
+18. CSRF jest wysyłany wyłącznie dla metod mutujących; po logowaniu i wylogowaniu token jest resetowany, a `403 CSRF_INVALID` skutkuje najwyżej jedną ponowną próbą.
 
 ## 11. Pułapki i lekcje
 
@@ -537,6 +552,10 @@ Te zasady wynikają z ADR i nie powinny być zmieniane bez nowej decyzji:
 17. **Rotacja przed zapisem kontekstu.** Przy ponownym logowaniu najpierw `changeSessionId()`, potem zapis kontekstu i nowy CSRF; odwrotna kolejność pozostawia ważny stary identyfikator lub stary token.
 18. **Klucz AES jest sekretem plikowym.** `.secrets/crypto.key` jest ignorowany, montowany tylko do backendu i nigdy nie trafia do obrazu ani `environment`. Brak lub błąd klucza blokuje start; nie przywracaj zerowego klucza demo.
 19. **Utrata klucza jest nieodwracalna.** Brak automatycznej rotacji i odzyskiwania w MVP; zmiana pliku po zapisaniu wiadomości czyni je nieczytelnymi. Kopia zapasowa jest obowiązkiem operatora.
+20. **CSRF w SPA.** Token jest czytany z cookie `XSRF-TOKEN`, a nie z odpowiedzi logowania. Po rotacji po stronie serwera trzeba wyczyścić token w pamięci; przy `403 CSRF_INVALID` klient odświeża `/api/auth/csrf` i ponawia żądanie dokładnie raz.
+21. **Brak storage w frontendzie.** Sesja to `HttpOnly` cookie, więc JavaScript nie ma do niej dostępu. Nie dodawaj `localStorage`/`sessionStorage`/IndexedDB dla użytkownika, hasła ani wiadomości — testy sprawdzają pusty storage i brak hasła w cookies.
+22. **Case-insensitive macOS.** Pliki `FormField.tsx` i `formField.ts` kolidowały na domyślnym systemie plików i import rozwiązywał się do złego modułu (`FormField` było `undefined`). Utrzymuj unikalne nazwy modułów niezależnie od wielkości liter.
+23. **StrictMode i `/me`.** Efekt startowy używa `AbortController` i flagi `active`; nie ustawiaj `loading` synchronicznie w ciele efektu (ESLint `react-hooks/set-state-in-effect`). Stan `loading` ustawia dopiero akcja retry.
 
 ## 12. Następne kroki
 
@@ -547,14 +566,14 @@ Kolejność rekomendowana:
 3. ~~**Konfiguracja i trwałość klucza**~~ — wykonane w ZR-10: generacja, sekret Compose tylko w backendzie, walidacja startowa, ADR-15.
 4. ~~**Kryptografia**~~ — wykonane w ZR-11 i pokryte testami jednostkowymi w ZR-12: `CryptoService` AES-256-GCM, `PackageCodec`, format pakietu, AAD, walidacja nonce/tag/długości, wektory z `docs/API.md`.
 5. ~~**Zapis, lista i odczyt wiadomości**~~ — wykonane w ZR-14; izolacja A/B i persystencja pokryte testami w ZR-16. Pozostaje endpoint usuwania oraz limity operacji crypto 60/min i 30/min.
-6. **Frontend** — formularz logowania, obsługa CSRF, lista i edytor wiadomości, stany błędów, testy komponentów.
-7. **E2E** — Playwright: logowanie, izolacja użytkowników, CRUD, wylogowanie, błędy walidacji.
+6. ~~**Frontend logowania**~~ — wykonane w ZR-17: klient API, CSRF, `/me`, formularz i wylogowanie. Pozostaje UI listy, edytora i usuwania wiadomości.
+7. **E2E** — Playwright: logowanie, izolacja użytkowników, CRUD, wylogowanie, błędy walidacji i axe.
 8. **CI i wydajność** — workflow GitHub Actions, `docs/PERFORMANCE.md`, testy obciążeniowe i analiza pamięci Argon2id.
 
 Warunki wejścia do kolejnego zadania:
 
 - drzewo czyste i `main == origin/main`,
-- 125/125 testów backendu i 3/3 frontendu,
+- 125/125 testów backendu i 26/26 frontendu,
 - Compose z trzema zdrowymi kontenerami,
 - dokumentacja i ADR zaktualizowane w tym samym commicie,
 - wpis do Notion z rzeczywistym hashem commita i wynikami komend.

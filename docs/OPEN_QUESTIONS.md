@@ -59,6 +59,7 @@ Stan na **2026-11-06**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q43 | Mapowanie JPA i repozytoria | `created_at` z bazy przez `@Generated`; relacja jednokierunkowa `Message.owner`; repozytoria owner-scoped z kursorem; encje poza API; `ddl-auto=validate` | Przyjęte | ADR-12, R04/R06 |
 | Q44 | Źródło i profil kont demo | `application-local.properties`; seed tylko przy profilu `local`; Compose domyślnie `local`, nadpisywalny przez `SPRING_PROFILES_ACTIVE`; poza `local` brak seedu | Przyjęte | ADR-13, R02/R06 |
 | Q45 | Logowanie, sesja i CSRF | Ręczny login JSON; `JSESSIONID` `HttpOnly`/`SameSite=Lax`/30 min; `XSRF-TOKEN` + `X-XSRF-TOKEN`; rotacja sesji i tokenu po logowaniu; login zawsze wymaga CSRF; `401` przed `403`; limiter 5 nieudanych/60 s na IP+login, wygaśnięcie okna testowane kontrolowanym zegarem; `Secure` przez `SESSION_COOKIE_SECURE` | Przyjęte | ADR-14, R02/R06 |
+| Q46 | Sesja i CSRF w SPA | Sesja wyłącznie w cookie `JSESSIONID`; token CSRF z cookie `XSRF-TOKEN` tylko dla mutacji; brak `localStorage`/`sessionStorage`/IndexedDB; po rotacji reset tokenu i jednorazowy retry `403 CSRF_INVALID`; `/me` 401 = anonim; błędy `400`/`401`/`429` mapowane w formularzu | Przyjęte | ADR-19, R01/R02/R08 |
 
 ## Zasady rozstrzygania
 

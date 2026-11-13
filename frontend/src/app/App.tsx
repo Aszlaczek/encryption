@@ -1,6 +1,16 @@
+import { AuthProvider, LoginForm, SessionPanel, useAuth } from '../features/auth';
+
 const REPOSITORY_URL = 'https://github.com/Aszlaczek/encryption';
 
 export function App() {
+  return (
+    <AuthProvider>
+      <AppLayout />
+    </AuthProvider>
+  );
+}
+
+function AppLayout() {
   return (
     <>
       <a className="skip-link" href="#main-content">
@@ -20,14 +30,7 @@ export function App() {
         </header>
 
         <main id="main-content" className="app__main">
-          <section aria-labelledby="status-heading">
-            <h2 id="status-heading">Stan projektu</h2>
-            <ul className="status-list">
-              <li>Frontend: React, Vite i TypeScript — szkielet gotowy.</li>
-              <li>Backend: Spring Boot i PostgreSQL — szkielet oraz model danych gotowe.</li>
-              <li>Logowanie, szyfrowanie i lista wiadomości — w przygotowaniu.</li>
-            </ul>
-          </section>
+          <SessionGate />
         </main>
 
         <footer className="app__footer">
@@ -36,4 +39,36 @@ export function App() {
       </div>
     </>
   );
+}
+
+function SessionGate() {
+  const { state, refresh } = useAuth();
+
+  if (state.status === 'loading') {
+    return (
+      <p className="session-status" role="status">
+        Sprawdzanie sesji…
+      </p>
+    );
+  }
+
+  if (state.status === 'error') {
+    return (
+      <section className="auth-card" aria-labelledby="session-error-heading">
+        <h2 id="session-error-heading">Nie udało się sprawdzić sesji</h2>
+        <div className="alert alert--error" role="alert">
+          {state.message}
+        </div>
+        <button className="button button--primary" type="button" onClick={refresh}>
+          Spróbuj ponownie
+        </button>
+      </section>
+    );
+  }
+
+  if (state.status === 'authenticated') {
+    return <SessionPanel />;
+  }
+
+  return <LoginForm />;
 }
