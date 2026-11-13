@@ -103,7 +103,13 @@ Celowo usunięto warunek właściciela w `MessageService.find`:
 
 Wynik: `Tests run: 10, Failures: 8` — testy wykryły wyciek danych A do sesji B (lista/szczegóły/decrypt oraz warianty parametryzowane). Po przywróceniu kodu: `Tests run: 10, Failures: 0`. Kod produkcyjny nie został zmieniony w ramach zadania.
 
-## 7. Ograniczenia
+## 7. Dziennik wykonania
+
+| Data | Zmiana | Uzasadnienie | Problem i rozwiązanie | Testy | Następny krok |
+|---|---|---|---|---|---|
+| 2026-11-13 | Dodano `MessageIsolationIntegrationTests` (10 testów); bez zmian kodu produkcyjnego. Zaktualizowano `README.md`, `docs/PROJECT_MEMORY.md`, `AGENTS.md` i dodano ten raport. | Domknięcie R02, R04 i R06: izolacja A/B, sesja, CSRF, parametryzacja i faktyczny rekord PostgreSQL. | Payload SQL injection zawierający `;` i spacje w ścieżce był odrzucany przez warstwę kontenera (puste `400`, bez RFC 9457). Rozwiązanie: w ścieżce testować payloady bez surowych średników (`1' OR '1'='1`, wariant UUID), a próby `DROP TABLE` przenieść do parametrów `limit`/`cursor` i nieznanego pola `ownerId`. | `./mvnw -Dtest=MessageIsolationIntegrationTests test` — 10/10; `./mvnw spotless:check verify` — 125/125; frontend 3/3; kontrola mutacyjna 8/10 FAIL, po przywróceniu 10/10. | `DELETE /api/messages/{id}` oraz limitery crypto 60/min i 30/min. |
+
+## 8. Ograniczenia
 
 - MockMvc nie jest dowodem atrybutów cookie (`SameSite`, `HttpOnly`); politykę `JSESSIONID`/`XSRF-TOKEN` weryfikują istniejące testy auth i `curl` przez nginx.
 - Testy nie obejmują `DELETE /api/messages/{id}` ani limiterów 60/30 na minutę — te funkcje nie są jeszcze zaimplementowane (kolejne zadania).
