@@ -8,11 +8,11 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-13)
 
-- Ostatni commit funkcjonalny: `26fda0d` (ZR-18 — formularze szyfrowania i deszyfrowania); drzewo powinno być czyste.
-- Ukończone: ZR-01…ZR-18.
-- Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem; formularze szyfrowania/deszyfrowania z licznikami, kopiowaniem, rozdziałem „Szyfruj”/„Szyfruj i zapisz”, mapowaniem błędów i renderowaniem treści wyłącznie jako tekst.
-- **Nie ma jeszcze** usuwania wiadomości, limitera crypto 60/30 na minutę oraz UI listy i usuwania zapisanych wiadomości. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
-- Testy: 125/125 backendu (`./mvnw spotless:check verify`), 71/71 frontendu (`npm test`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md).
+- Ostatni commit funkcjonalny: `26fda0d` (ZR-18 — formularze szyfrowania i deszyfrowania); ZR-19 jest w trakcie zamykania, drzewo zawiera zmiany przed commitem.
+- Ukończone: ZR-01…ZR-19.
+- Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem; formularze szyfrowania/deszyfrowania z licznikami, kopiowaniem, rozdziałem „Szyfruj”/„Szyfruj i zapisz”, mapowaniem błędów i renderowaniem treści wyłącznie jako tekst; lista zapisanych wiadomości z paginacją kursorem, stanami ładowania/pustki/błędu, podglądem pakietu i deszyfrowaniem dopiero po kliknięciu.
+- **Nie ma jeszcze** usuwania wiadomości ani UI usuwania, limitera crypto 60/30 na minutę. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
+- Testy: 125/125 backendu (`./mvnw spotless:check verify`), 106/106 frontendu (`npm test`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md).
 
 ## Najpierw przeczytaj
 
@@ -136,8 +136,14 @@ docker compose exec -T db psql -U encryption -d encryption -c 'select username, 
 - **Clipboard w testach** — `userEvent.setup()` podstawia własny stub `navigator.clipboard`; nadpisuj go po `setup()`. W przeglądarce kopiowanie wymaga bezpiecznego kontekstu, a UI musi mieć komunikat o ręcznym kopiowaniu.
 - **Fokus po błędzie** — nie wywołuj `.focus()` na textarea, gdy `pending` jest jeszcze `true` (pole jest `disabled`); użyj efektu na `fieldError`, jak w `LoginForm`.
 - **401 w crypto** — `features/crypto` nie importuje `features/auth`; `CryptoWorkspace` dostaje `onSessionExpired`, a `AuthProvider.expireSession()` czyści CSRF i pokazuje komunikat na logowaniu.
+- **401 w messages** — `features/messages` również nie importuje `features/auth`; `MessagesPanel` i `MessageListItem` dostają `onSessionExpired`. `App` montuje panel z `key={state.user.id}`, więc zmiana konta resetuje listę i odszyfrowaną treść.
+- **Kursor tylko po sukcesie** — nie przesuwaj kursora przed udaną odpowiedzią; błąd strony musi ponowić ten sam kursor. `hasMore && !nextCursor` traktuj jako błąd, inaczej powstaje pętla.
+- **Bez prefetchu treści** — lista pobiera wyłącznie `id`/`createdAt`; `GET /api/messages/{id}` i `POST …/decrypt` wykonuj dopiero po kliknięciu. Nie dodawaj masowego pobierania pakietów ani plaintextu.
+- **Deduplikacja po `id`** — kolejne strony mogą powtórzyć rekord; scalaj po identyfikatorze zamiast slepo dopisywać.
+- **`onSessionExpired` w efekcie** — w `MessagesPanel` callback jest trzymany w `useRef`, żeby nie restartować pierwszego pobrania przy każdej zmianie funkcji z `AuthProvider`.
+- **Testy listy** — `src/test/backend.ts` udostępnia router `fetch` po ścieżce; nowe żądanie (np. lista po logowaniu) dodaj jako trasę, a nie kolejny `mockResolvedValueOnce`, żeby nie przesuwać kolejki.
 - **Treść tylko jako tekst** — wynik deszyfrowania renderuj przez `{plaintext}` w `<pre>`/`<output>`; nie używaj `dangerouslySetInnerHTML` ani `innerHTML`.
 
 ## Następny krok
 
-UI listy i usuwania zapisanych wiadomości w React (wykorzystanie wspólnego klienta API i sesji z ZR-17 oraz formularzy z ZR-18), a następnie `DELETE /api/messages/{id}` i limitery crypto 60/min i 30/min. Potem formalne testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).
+`DELETE /api/messages/{id}` i UI usuwania zapisanych wiadomości, a następnie limitery crypto 60/min i 30/min. Potem formalne testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).

@@ -1,6 +1,3 @@
-/**
- * Messages module boundary.
- *
- * Planned: cursor-paginated list, message details and deletion.
- */
-export {};
+export { MessageListItem } from './MessageListItem';
+export { MessagesPanel } from './MessagesPanel';
+export type { DecryptedMessage, MessageDetail, MessagePage, MessageSummary } from './api';

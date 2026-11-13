@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CopyButton, FormField, describedBy } from '../../shared/ui';
 import { encryptPlaintext, saveMessage, type SavedMessage } from './api';
-import { formatDateTime, formatNumber } from './format';
+import { formatDateTime, formatNumber } from '../../shared/format';
 import {
   PLAINTEXT_MAX_BYTES,
   PLAINTEXT_MAX_CODE_POINTS,

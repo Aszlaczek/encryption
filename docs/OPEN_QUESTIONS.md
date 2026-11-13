@@ -62,6 +62,8 @@ Stan na **2026-11-13**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q46 | Sesja i CSRF w SPA | Sesja wyłącznie w cookie `JSESSIONID`; token CSRF z cookie `XSRF-TOKEN` tylko dla mutacji; brak `localStorage`/`sessionStorage`/IndexedDB; po rotacji reset tokenu i jednorazowy retry `403 CSRF_INVALID`; `/me` 401 = anonim; błędy `400`/`401`/`429` mapowane w formularzu | Przyjęte | ADR-19, R01/R02/R08 |
 | Q47 | Formularze szyfrowania i deszyfrowania w SPA | Dwie sekcje widoczne jednocześnie; „Szyfruj” bez zapisu i osobne „Szyfruj i zapisz”; wyniki jako tekst (`<output>`/`<pre>`), bez `innerHTML`; kopiowanie pakietu i treści przez Clipboard API z komunikatem o ręcznym fallbacku; klient pomocniczo waliduje 10 000 punktów kodowych / 40 000 B / 56 000 znaków, a serwer pozostaje źródłem prawdy; `401` kończy sesję i pokazuje komunikat na logowaniu | Przyjęte | ADR-20, R01/R03/R08 |
 
+| Q48 | Lista zapisanych wiadomości w SPA | Paginacja kursorem z „Pobierz więcej” i `limit=10`; lista tylko `id`/`createdAt`; pakiet i plaintext dopiero po kliknięciu; kursor przesuwa się tylko po sukcesie, błąd ponawia ten sam kursor; deduplikacja po `id`; `hasMore` bez kursora to błąd; `401` kończy sesję przez `onSessionExpired`; `App` używa `key={user.id}`; brak usuwania w tym zadaniu | Przyjęte | ADR-21, R01/R04/R09 |
+
 ## Zasady rozstrzygania
 
 1. Kwestia oznaczona jako **Otwarte** musi zostać rozstrzygnięta przed zadaniem, którego dotyczy.

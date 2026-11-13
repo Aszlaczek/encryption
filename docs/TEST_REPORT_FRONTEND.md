@@ -1,12 +1,14 @@
-# Raport testów frontendu — klient API, logowanie, sesja i formularze crypto (ZR-17/ZR-18)
+# Raport testów frontendu — klient API, logowanie, sesja, formularze crypto i lista wiadomości (ZR-17/ZR-18/ZR-19)
 
 - **Data:** 2026-11-13
-- **Zadania:** ZR-17 — klient API i logowanie; ZR-18 — formularze szyfrowania i deszyfrowania
-- **Wymagania:** R01, R02, R03, R08
+- **Zadania:** ZR-17 — klient API i logowanie; ZR-18 — formularze szyfrowania i deszyfrowania; ZR-19 — lista zapisanych wiadomości
+- **Wymagania:** R01, R02, R03, R04, R08, R09
 - **Zależności ZR-18 potwierdzone:** ZR-13 (`7c10342`), ZR-14 (`66fce7a`), ZR-17 (`c51a319`)
-- **Commit funkcjonalny ZR-17:** `c51a319`; ZR-18: `26fda0d`
+- **Zależności ZR-19 potwierdzone:** ZR-14 (`66fce7a`), ZR-17 (`c51a319`); baseline `9e9144b`
+- **Commit funkcjonalny ZR-17:** `c51a319`; ZR-18: `26fda0d`; ZR-19: `__ZR19_COMMIT__`
 - **Zakres kodu ZR-17:** `frontend/src/shared/api/`, `frontend/src/features/auth/`, `frontend/src/app/App.tsx`, `frontend/vite.config.ts`, `frontend/src/styles/global.css`
 - **Zakres kodu ZR-18:** `frontend/src/features/crypto/`, `frontend/src/shared/ui/CopyButton.tsx`, `frontend/src/features/auth/` (`expireSession`), `frontend/src/app/App.tsx`, `frontend/src/styles/global.css`
+- **Zakres kodu ZR-19:** `frontend/src/features/messages/`, `frontend/src/shared/format.ts`, `frontend/src/features/crypto/` (importy formattera), `frontend/src/app/App.tsx`, `frontend/src/test/backend.ts`, `frontend/src/styles/global.css`
 
 ## 1. Środowisko
 
@@ -225,3 +227,91 @@ Konsola przeglądarki nie zgłosiła błędów strony (`pageerror` puste); odnot
 | Data | Zmiana | Uzasadnienie | Problem i rozwiązanie | Testy | Następny krok |
 |---|---|---|---|---|---|
 | 2026-11-13 | Dodano `features/crypto` (API, limity, mapowanie błędów, panele, workspace), `shared/ui/CopyButton`, `expireSession` i komunikat o wygaśnięciu sesji; zaktualizowano `App`, `SessionPanel`, style i testy. | Realizacja R01, R03, R08: szyfrowanie bez zapisu i z zapisem, deszyfrowanie wklejonego pakietu, kopiowanie, czytelne błędy i treść bez `innerHTML`. | (1) `userEvent.setup()` nadpisywał podstawiony `navigator.clipboard`, więc testy kopiowania padały — clipboard ustawiany jest po `setup()`. (2) `.focus()` na textarea w `catch` nie działał, bo pole było jeszcze `disabled` — fokus przeniesiono do efektu na `fieldError`. (3) `Intl.NumberFormat('pl-PL')` wstawia niełamliwe spacje — testy polegają na normalizacji białych znaków. | `npm run lint`, `format:check`, `npm test` 71/71, `npm run build`; smoke Playwright PASS; `check-secrets` i `git diff --check` OK. | UI listy i usuwania wiadomości, `DELETE`, limitery crypto, potem formalne E2E i CI. |
+
+---
+
+## 10. ZR-19 — lista zapisanych wiadomości
+
+### 10.1 Komendy i wyniki
+
+Weryfikacja 2026-11-13; Node.js 22.19.0, npm 11.16.0, Playwright 1.64.1 + Google Chrome, Docker Compose, PostgreSQL 16.
+
+```text
+cd frontend && npm run lint          -> OK
+cd frontend && npm run format:check  -> All matched files use Prettier code style!
+cd frontend && npm test              -> 15 plików, 106/106 testów, PASS
+cd frontend && npm run build         -> tsc -b + vite build; JS 248.82 kB (gzip 76.56 kB), CSS 6.24 kB
+docker compose up -d --build frontend -> frontend healthy; 3 kontenery healthy
+curl http://localhost:3000/actuator/health -> 200
+./scripts/check-secrets.sh           -> OK
+git diff --check                     -> OK
+```
+
+### 10.2 Testy (106)
+
+| Plik | Liczba | Co sprawdza |
+|---|---:|---|
+| `src/features/messages/api.test.ts` | 6 | `limit=10`, kursor bez reinterpretacji, `AbortSignal`, szczegóły po `id`, decrypt POST bez ciała z CSRF, brak `ownerId` |
+| `src/features/messages/errors.test.ts` | 7 | sieć, `401`, `404`/`INVALID_MESSAGE_ID`, `INVALID_CURSOR`, `429`, `403`, `MESSAGE_UNDECRYPTABLE` vs `500` |
+| `src/features/messages/MessageListItem.test.tsx` | 9 | brak pobierania przy renderze, pakiet po kliknięciu i kopiowanie, ukrycie bez refetchu, decrypt na żądanie, XSS jako tekst, kopiowanie treści, pending, `404`/`MESSAGE_UNDECRYPTABLE` z fokusem, `401` kończący sesję |
+| `src/features/messages/MessagesPanel.test.tsx` | 12 | ładowanie i pustka, brak prefetchu, kolejna strona z kursorem, błąd strony z retry tego samego kursora, błąd pierwszej strony, `401` dla pierwszej i kolejnej strony, `429`, `hasMore` bez kursora, deduplikacja, odświeżenie, abort przy odmontowaniu |
+
+Pozostałe pliki bez zmian funkcjonalnych: `App.test.tsx` ma teraz 5 testów (dodano listę i czyszczenie po wylogowaniu), a `AuthProvider.test.tsx` korzysta z routera `fetch` po ścieżce. Łącznie 106 testów w 15 plikach.
+
+### 10.3 Mapowanie kryteriów akceptacji
+
+| Kryterium | Dowód |
+|---|---|
+| Widoczne wyłącznie wiadomości bieżącego konta | `MessagesPanel.test.tsx` renderuje tylko zwrócone pozycje i nie pobiera treści; curl: lista Alicji nie zawiera identyfikatorów Boba, Bob widzi tylko swoje 2; smoke sprawdza brak ID Boba w treści strony przed i po paginacji; obcy `GET`/`decrypt` zwraca `404 MESSAGE_NOT_FOUND` |
+| Paginacja działa i pokazuje błędy API | `MessagesPanel.test.tsx`: kolejna strona z kursorem, błąd strony z retry tego samego kursora, `429`, `hasMore` bez kursora, deduplikacja, abort; smoke: wymuszony `500` zachowuje 10 pozycji i alert, retry dociąga 14 unikalnych; curl: `INVALID_CURSOR` → `400`, `limit=0` → `400 VALIDATION_FAILED` |
+| Wylogowanie czyści wrażliwy stan widoku | `App.test.tsx`: po wylogowaniu brak odszyfrowanej treści i ID wiadomości, storage pusty; smoke: po wylogowaniu brak listy i plaintextu w `body`, `localStorage`/`sessionStorage`/IndexedDB puste |
+
+### 10.4 Smoke w przeglądarce
+
+Playwright 1.64.1 + Google Chrome (headless), ad-hoc poza repozytorium, przeciwko Compose i nginx. Scenariusz rejestruje wszystkie żądania `/api/*` i sprawdza stan DOM oraz storage.
+
+| Krok | Oczekiwanie | Wynik |
+|---|---|---|
+| Logowanie `alice` / `AliceDemo123!` | nagłówek „Zapisane wiadomości” i 10 pozycji | PASS |
+| Pierwsze wejście | dokładnie jedno `GET /api/messages?limit=10`, zero `GET /api/messages/{id}` i zero `POST …/decrypt` | PASS |
+| Izolacja | brak identyfikatorów Boba w widoku Alicji | PASS (2 sprawdzone) |
+| Wymuszony `500` na kolejnej stronie | 10 wcześniejszych pozycji zostaje, `role="alert"` z komunikatem | PASS |
+| „Spróbuj ponownie” po błędzie | ten sam kursor, 14 unikalnych pozycji, brak duplikatów | PASS |
+| „Pokaż pakiet” | jedno `GET /api/messages/{id}`, pakiet `v1.…` w `<output>` | PASS |
+| „Kopiuj pakiet” | schowek zawiera dokładnie pakiet, status „Skopiowano pakiet” | PASS |
+| „Odszyfruj” dla `<img onerror>` | tekst w `<pre>`, 0 elementów `img`, brak wykonania handlera, jedno `POST …/decrypt` | PASS |
+| Storage po operacjach | `localStorage`, `sessionStorage`, IndexedDB puste; brak plaintextu i hasła w cookies | PASS |
+| Wylogowanie | brak listy i plaintextu w DOM, storage pusty | PASS |
+
+Sekwencja API zarejestrowana przez Playwright (skrót):
+
+```text
+GET  /api/auth/me          401
+GET  /api/auth/csrf        200
+POST /api/auth/login       200
+GET  /api/messages?limit=10 200
+GET  /api/messages?limit=10&cursor=… 500 (wymuszony)
+GET  /api/messages?limit=10&cursor=… 200 (ten sam kursor)
+GET  /api/messages/{id}    200
+POST /api/messages/{id}/decrypt 200
+POST /api/messages         201 (wiadomość z payloadem XSS)
+POST /api/messages/{id}/decrypt 200
+POST /api/auth/logout      204
+```
+
+Konsola przeglądarki nie zgłosiła błędów strony (`pageerror` puste); odnotowano wyłącznie oczekiwane wpisy sieciowe dla `401` i wymuszonego `500`.
+
+### 10.5 Ograniczenia
+
+- Smoke Playwright był jednorazowy i nie jest commitowany; formalne E2E i axe pozostają osobnym zadaniem.
+- Testy komponentów mockują moduł `./api`; realny kontrakt potwierdzają `api.test.ts`, curl i smoke.
+- Brak usuwania wiadomości: `DELETE /api/messages/{id}` i przycisk usuwania są poza zakresem ZR-19.
+- Limiter crypto 60/30 nadal nie istnieje; mapowanie `429` jest pokryte testem jednostkowym i sztuczną odpowiedzią, nie realnym limitem.
+- Lista pobiera kolejne strony ręcznie; brak automatycznego infinite scroll i brak wirtualizacji długich list.
+- Konto Alicji miało dodatkowe wiadomości z wcześniejszych smoke'ów, więc liczba 14 dotyczy stanu bazy w chwili testu, a nie stałej fixtures.
+
+### 10.6 Dziennik wykonania
+
+| Data | Zmiana | Uzasadnienie | Problem i rozwiązanie | Testy | Następny krok |
+|---|---|---|---|---|---|
+| 2026-11-13 | Dodano `features/messages` (API, mapowanie błędów, panel, element listy), `shared/format.ts`, style listy i wyników, router `fetch` w testach; zaktualizowano `App`, `App.test.tsx` i `AuthProvider.test.tsx`. | Realizacja R01, R04, R09: lista tylko własnych wiadomości, paginacja z obsługą błędów, podgląd pakietu i deszyfrowanie na żądanie, brak masowego plaintextu i czyszczenie po wylogowaniu. | (1) `App` przekazywał nową funkcję `expireSession` przy każdym renderze, co restartowało pierwsze pobranie — callback trafił do `useRef`. (2) Kolejka `mockResolvedValueOnce` przesuwała się po dodaniu żądania listy — testy integracyjne dostały router po ścieżce. (3) `userEvent.setup()` nadpisywał clipboard — stub ustawiany jest po `setup()`. (4) Przycisk „Pobierz więcej” zmienia tekst na „Pobieranie…”, więc smoke czeka na „To wszystkie zapisane wiadomości.” zamiast na odmontowanie przycisku. | `npm run lint`, `format:check`, `npm test` 106/106, `npm run build`; curl i smoke Playwright PASS; `check-secrets` i `git diff --check` OK. | `DELETE /api/messages/{id}` i UI usuwania, potem limitery crypto, formalne E2E i CI. |

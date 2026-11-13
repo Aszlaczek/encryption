@@ -3,9 +3,11 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../app/App';
 import { resetCsrfToken } from '../../shared/api';
+import { createFetchRouter, emptyPage, type Routes } from '../../test/backend';
 import { clearCsrfCookie, mockResponse, setCsrfCookie } from '../../test/http';
 
-const fetchMock = vi.fn();
+const routes: Routes = {};
+const fetchMock = createFetchRouter(routes);
 
 function unauthenticated() {
   return mockResponse({
@@ -14,8 +16,30 @@ function unauthenticated() {
   });
 }
 
+function serverError() {
+  return mockResponse({
+    status: 500,
+    body: { status: 500, code: 'INTERNAL_ERROR', detail: 'Błąd serwera.' },
+  });
+}
+
+function asAlice() {
+  routes['/api/auth/me'] = () => mockResponse({ body: { id: 'u1', username: 'alice' } });
+}
+
+function callsTo(path: string) {
+  return fetchMock.mock.calls
+    .filter(([input]) => String(input).startsWith(path))
+    .map(([input, init]) => [input, init ?? {}] as [string, RequestInit]);
+}
+
 beforeEach(() => {
-  fetchMock.mockReset();
+  for (const key of Object.keys(routes)) {
+    delete routes[key];
+  }
+  fetchMock.mockClear();
+  routes['/api/auth/me'] = unauthenticated;
+  routes['/api/messages'] = emptyPage;
   vi.stubGlobal('fetch', fetchMock);
   resetCsrfToken();
   setCsrfCookie('csrf-token');
@@ -34,7 +58,7 @@ afterEach(() => {
 
 describe('AuthProvider session flow', () => {
   it('renders the authenticated shell when /me returns the current user', async () => {
-    fetchMock.mockResolvedValueOnce(mockResponse({ body: { id: 'u1', username: 'alice' } }));
+    asAlice();
 
     render(<App />);
 
@@ -45,8 +69,6 @@ describe('AuthProvider session flow', () => {
   });
 
   it('treats 401 from /me as anonymous without an error alert', async () => {
-    fetchMock.mockResolvedValueOnce(unauthenticated());
-
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: 'Zaloguj się' })).toBeInTheDocument();
@@ -55,31 +77,24 @@ describe('AuthProvider session flow', () => {
 
   it('offers a retry when the session check fails', async () => {
     const user = userEvent.setup();
-    fetchMock
-      .mockResolvedValueOnce(
-        mockResponse({
-          status: 500,
-          body: { status: 500, code: 'INTERNAL_ERROR', detail: 'Błąd serwera.' },
-        }),
-      )
-      .mockResolvedValueOnce(mockResponse({ body: { id: 'u1', username: 'alice' } }));
+    routes['/api/auth/me'] = serverError;
 
     render(<App />);
 
     expect(await screen.findByText('Nie udało się sprawdzić sesji')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Nie udało się sprawdzić sesji');
+
+    asAlice();
     await user.click(screen.getByRole('button', { name: 'Spróbuj ponownie' }));
 
     expect(await screen.findByRole('heading', { name: 'Zalogowano' })).toBeInTheDocument();
-    expect(fetchMock.mock.calls[1][0]).toBe('/api/auth/me');
+    expect(callsTo('/api/auth/me')).toHaveLength(2);
   });
 
   it('logs in against the backend and never sends an owner id or writes storage', async () => {
     const user = userEvent.setup();
     const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
-    fetchMock
-      .mockResolvedValueOnce(unauthenticated())
-      .mockResolvedValueOnce(mockResponse({ body: { id: 'u1', username: 'alice' } }));
+    routes['/api/auth/login'] = () => mockResponse({ body: { id: 'u1', username: 'alice' } });
 
     render(<App />);
 
@@ -90,7 +105,7 @@ describe('AuthProvider session flow', () => {
 
     expect(await screen.findByRole('heading', { name: 'Zalogowano' })).toBeInTheDocument();
 
-    const [path, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    const [path, init] = callsTo('/api/auth/login')[0];
     expect(path).toBe('/api/auth/login');
     expect(init.method).toBe('POST');
     expect(init.credentials).toBe('same-origin');
@@ -109,9 +124,8 @@ describe('AuthProvider session flow', () => {
   it('logs out, returns to the login form and keeps storage empty', async () => {
     const user = userEvent.setup();
     const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
-    fetchMock
-      .mockResolvedValueOnce(mockResponse({ body: { id: 'u1', username: 'alice' } }))
-      .mockResolvedValueOnce(mockResponse({ status: 204 }));
+    asAlice();
+    routes['/api/auth/logout'] = () => mockResponse({ status: 204 });
 
     render(<App />);
 
@@ -119,7 +133,7 @@ describe('AuthProvider session flow', () => {
     await user.click(screen.getByRole('button', { name: 'Wyloguj się' }));
 
     expect(await screen.findByRole('heading', { name: 'Zaloguj się' })).toBeInTheDocument();
-    const [path, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    const [path, init] = callsTo('/api/auth/logout')[0];
     expect(path).toBe('/api/auth/logout');
     expect(init.method).toBe('POST');
     expect((init.headers as Record<string, string>)['X-XSRF-TOKEN']).toBe('csrf-token');
@@ -130,9 +144,8 @@ describe('AuthProvider session flow', () => {
 
   it('treats a 401 during logout as already logged out', async () => {
     const user = userEvent.setup();
-    fetchMock
-      .mockResolvedValueOnce(mockResponse({ body: { id: 'u1', username: 'alice' } }))
-      .mockResolvedValueOnce(unauthenticated());
+    asAlice();
+    routes['/api/auth/logout'] = unauthenticated;
 
     render(<App />);
 
@@ -144,9 +157,8 @@ describe('AuthProvider session flow', () => {
 
   it('ends the session and explains why when a protected request returns 401', async () => {
     const user = userEvent.setup();
-    fetchMock
-      .mockResolvedValueOnce(mockResponse({ body: { id: 'u1', username: 'alice' } }))
-      .mockResolvedValueOnce(unauthenticated());
+    asAlice();
+    routes['/api/crypto/decrypt'] = unauthenticated;
 
     render(<App />);
 
@@ -158,7 +170,7 @@ describe('AuthProvider session flow', () => {
 
     expect(await screen.findByRole('heading', { name: 'Zaloguj się' })).toBeInTheDocument();
     expect(screen.getByText('Sesja wygasła. Zaloguj się ponownie.')).toBeInTheDocument();
-    const [path, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    const [path, init] = callsTo('/api/crypto/decrypt')[0];
     expect(path).toBe('/api/crypto/decrypt');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual({ package: 'v1.k1.nonce.cipher.tag' });
@@ -166,14 +178,8 @@ describe('AuthProvider session flow', () => {
 
   it('keeps the session and shows an alert when logout fails', async () => {
     const user = userEvent.setup();
-    fetchMock
-      .mockResolvedValueOnce(mockResponse({ body: { id: 'u1', username: 'alice' } }))
-      .mockResolvedValueOnce(
-        mockResponse({
-          status: 500,
-          body: { status: 500, code: 'INTERNAL_ERROR', detail: 'Błąd serwera.' },
-        }),
-      );
+    asAlice();
+    routes['/api/auth/logout'] = serverError;
 
     render(<App />);
 

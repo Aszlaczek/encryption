@@ -3,11 +3,11 @@
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
 - **Ostatnia aktualizacja:** 2026-11-13
-- **Ostatni commit funkcjonalny:** `26fda0d` — formularze szyfrowania i deszyfrowania (ZR-18)
-- **Gałąź:** `main`, gotowa do push na `origin/main`
-- **Stan drzewa:** czysty po commicie
-- **Zadania ukończone:** ZR-01…ZR-18
-- **Następne zadanie:** UI listy i usuwania wiadomości; opcjonalnie `DELETE /api/messages/{id}` i limitery crypto 60/30
+- **Ostatni commit funkcjonalny:** `26fda0d` — formularze szyfrowania i deszyfrowania (ZR-18); ZR-19 w trakcie zamykania
+- **Gałąź:** `main`, gotowa do push na `origin/main` po commicie ZR-19
+- **Stan drzewa:** zmiany ZR-19 przed commitem
+- **Zadania ukończone:** ZR-01…ZR-19
+- **Następne zadanie:** `DELETE /api/messages/{id}` i UI usuwania; opcjonalnie limitery crypto 60/30
 
 ## 1. Cel projektu
 
@@ -43,12 +43,12 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 - Izolacja dwóch użytkowników i persystencja pokryte `MessageIsolationIntegrationTests` (10 testów): lista, szczegóły, deszyfrowanie zapisanej wiadomości i wklejonego pakietu, sesja, CSRF, SQL injection oraz faktyczne wiersze PostgreSQL i historia Flyway; raport w `docs/TEST_REPORT.md`.
 - Frontend logowania i wspólny klient API: `JSESSIONID` w cookie, CSRF z `XSRF-TOKEN` tylko dla mutacji, `/me` przy starcie (401 = anonim), formularz z etykietami/hintami/błędami pól, mapowanie `400`/`401`/`429`, stan oczekiwania, wylogowanie i brak danych w `localStorage`/`sessionStorage`/IndexedDB; 26 testów i smoke Playwright w `docs/TEST_REPORT_FRONTEND.md`.
 - Frontend szyfrowania i deszyfrowania: dwie sekcje (szyfrowanie, deszyfrowanie), licznik punktów kodowych i bajtów UTF-8, osobne akcje „Szyfruj” (bez zapisu) i „Szyfruj i zapisz”, pole wklejania pakietu z `trim()`, kopiowanie pakietu i odszyfrowanej treści przez Clipboard API, mapowanie `VALIDATION_FAILED`/`INVALID_PACKAGE_FORMAT`/`DECRYPT_FAILED`/`429`/`403`/sieci, `401` kończący sesję z komunikatem na formularzu logowania oraz renderowanie treści wyłącznie jako tekst (bez `innerHTML`); 71 testów frontendu i smoke Playwright w `docs/TEST_REPORT_FRONTEND.md`.
+- Frontend listy zapisanych wiadomości: `features/messages` pobiera pierwszą stronę `limit=10`, dokłada kolejne po „Pobierz więcej” z kursorem z odpowiedzi, deduplikuje po `id`, zachowuje wczytane pozycje po błędzie strony i ponawia ten sam kursor; stany ładowania, pustki i błędu mają `role="status"`/`role="alert"` i fokus na alercie. Lista pokazuje wyłącznie `id` i `createdAt`; pakiet i plaintext są pobierane dopiero po kliknięciu przy wybranej wiadomości, a treść renderowana jest jako tekst. `401` kończy sesję przez `onSessionExpired`, a `App` montuje panel z `key={state.user.id}`, więc wylogowanie i zmiana konta czyszczą listę oraz odszyfrowaną treść. Łącznie 106 testów frontendu i smoke Playwright w `docs/TEST_REPORT_FRONTEND.md`.
 
 ### Jeszcze nie istnieje
 
-- usuwanie wiadomości,
+- usuwanie wiadomości i UI usuwania,
 - limity szyfrowania/deszyfrowania (60/min i 30/min),
-- UI listy i usuwania zapisanych wiadomości (formularze szyfrowania/deszyfrowania już działają),
 - testy E2E, konfiguracja CI, `docs/PERFORMANCE.md`,
 - rotacja kluczy i obsługa wielu aktywnych kluczy.
 
@@ -57,7 +57,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 | Warstwa | Liczba | Uruchomienie |
 |---|---:|---|
 | Backend (JUnit 5, Testcontainers PostgreSQL 16) | 125 | `cd backend && ./mvnw spotless:check verify` |
-| Frontend (Vitest + Testing Library) | 71 | `cd frontend && npm test` |
+| Frontend (Vitest + Testing Library) | 106 | `cd frontend && npm test` |
 | E2E | 0 | brak |
 
 Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose budują się z `-DskipTests`, więc testy trzeba uruchomić osobno.
@@ -87,6 +87,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-16 | `d960326` | 2026-11-13 | Testy izolacji A/B i persystencji: lista, szczegóły, decrypt zapisanej wiadomości i wklejonego pakietu, sesja, CSRF, SQL injection, faktyczne wiersze bazy i Flyway | `./mvnw -Dtest=MessageIsolationIntegrationTests test` — 10/10; `./mvnw spotless:check verify` — 125/125; kontrola mutacyjna 8/10 FAIL po usunięciu owner scope; raport `docs/TEST_REPORT.md` |
 | ZR-17 | `c51a319` | 2026-11-13 | Wspólny klient HTTP z CSRF i RFC 9457; sesja `/me` z 401 = anonim; dostępny formularz logowania, mapowanie błędów, wylogowanie; brak storage; proxy dev | `npm run lint`, `format:check`, `npm test` — 26/26, `npm run build`; Compose 3 healthy; smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
 | ZR-18 | `26fda0d` | 2026-11-13 | Formularze szyfrowania i deszyfrowania: liczniki code point/UTF-8, osobne „Szyfruj” i „Szyfruj i zapisz”, wklejanie i kopiowanie pakietu oraz treści, mapowanie błędów, 401 kończący sesję, tekst bez `innerHTML` | `npm run lint`, `format:check`, `npm test` — 71/71, `npm run build`; Compose 3 healthy; smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
+| ZR-19 | `__ZR19_COMMIT__` | 2026-11-13 | Lista zapisanych wiadomości: paginacja kursorem, stany ładowania/pustki/błędu, retry tego samego kursora, deduplikacja, podgląd pakietu i deszyfrowanie tylko po kliknięciu, kopiowanie, tekst bez `innerHTML`, czyszczenie po wylogowaniu | `npm run lint`, `format:check`, `npm test` — 106/106, `npm run build`; Compose 3 healthy; curl (izolacja, kursor, `404`, `INVALID_CURSOR`, limit) i smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
 
 ### ZR-01 — zakres i decyzje
 
@@ -353,6 +354,37 @@ pakiet obcego pochodzenia            -> 422 DECRYPT_FAILED
 smoke Playwright                     -> PASS (round-trip, clipboard, XSS jako tekst, zapis, storage pusty)
 ```
 
+### ZR-19 — lista zapisanych wiadomości
+
+- `features/messages` zawiera `api.ts` (`listMessages`, `getMessage`, `decryptMessage`, `MESSAGE_PAGE_SIZE = 10`), `errors.ts`, `MessagesPanel`, `MessageListItem` i `index.ts`. Moduł nie importuje `features/auth` ani `features/crypto`; sesję kończy `onSessionExpired`, a kompozycję wykonuje `App.tsx`.
+- Pierwsza strona to jedno `GET /api/messages?limit=10`. Lista pokazuje wyłącznie `id` i `createdAt`; pakiet (`GET /api/messages/{id}`) i plaintext (`POST /api/messages/{id}/decrypt`) są pobierane dopiero po kliknięciu „Pokaż pakiet”/„Odszyfruj” przy wybranej wiadomości. Nie ma masowego pobierania treści.
+- Paginacja używa kursora z poprzedniej odpowiedzi. Kursor przesuwa się dopiero po sukcesie, więc błąd strony nie gubi danych i ponowienie używa tego samego kursora. Pozycje są deduplikowane po `id`, a `hasMore && !nextCursor` jest traktowane jako błąd zamiast pętli.
+- Stany: `role="status"` podczas ładowania, komunikat o pustej liście, `role="alert"` z fokusem dla błędu pierwszej strony i błędu kolejnej strony. „Odśwież listę” wraca do pierwszej strony, a „Pobierz więcej” znika po wyczerpaniu danych.
+- Wyniki są renderowane jako tekst: pakiet w `<output>`, plaintext w `<pre>`. Testy i smoke potwierdzają, że `<img onerror>` nie tworzy elementu i nie wykonuje handlera.
+- `App` montuje `<MessagesPanel key={state.user.id} onSessionExpired={expireSession} />` po sekcji crypto. Zmiana użytkownika lub wylogowanie odmontowuje panel, więc lista i odszyfrowana treść nie pozostają w DOM; storage pozostaje pusty.
+- `formatDateTime`/`formatNumber` przeniesiono do `shared/format.ts`, żeby lista i crypto korzystały z jednego formattera.
+- Testy: `api.test.ts` (6), `errors.test.ts` (7), `MessageListItem.test.tsx` (9), `MessagesPanel.test.tsx` (12); łącznie 34 nowe testy i 106/106 w całym froncie. `App.test.tsx` i `AuthProvider.test.tsx` korzystają z routera `fetch` po ścieżce (`src/test/backend.ts`), bo po zalogowaniu dochodzi żądanie listy.
+
+Weryfikacja ZR-19 (2026-11-13; Node.js 22.19.0, npm 11.16.0, Playwright 1.64.1 + Chrome, Docker Compose, PostgreSQL 16):
+
+```text
+cd frontend && npm run lint          -> OK
+cd frontend && npm run format:check  -> All matched files use Prettier code style!
+cd frontend && npm test              -> 15 plików, 106/106 testów, PASS
+cd frontend && npm run build         -> tsc -b + vite build, dist/ wygenerowany
+docker compose up -d --build frontend -> 3 kontenery healthy
+curl http://localhost:3000/actuator/health -> 200
+GET /api/messages bez sesji          -> 401 UNAUTHENTICATED
+GET /api/messages?limit=10 (alice)   -> 10 pozycji, tylko id + createdAt
+paginacja alice                      -> 2 strony, 14 unikalnych, 0 duplikatów, 0 ID Boba
+GET /api/messages/{id} (alice)       -> pakiet v1.…, bez plaintextu
+GET obcy zasób (bob)                -> 404 MESSAGE_NOT_FOUND
+POST /api/messages/{id}/decrypt      -> 200 właściciel, 404 obcy
+cursor=not-a-cursor                  -> 400 INVALID_CURSOR
+limit=0                              -> 400 VALIDATION_FAILED / OUT_OF_RANGE
+smoke Playwright                     -> PASS (jedno pobranie listy, brak prefetchu, izolacja, retry, pakiet, XSS, logout)
+```
+
 ## 4. Architektura i układ repozytorium
 
 ```text
@@ -363,10 +395,10 @@ smoke Playwright                     -> PASS (round-trip, clipboard, XSS jako te
 ├── docs/
 │   ├── API.md                # kanoniczny kontrakt HTTP
 │   ├── DATA_MODEL.md         # schemat, JPA, migracje
-│   ├── DECISIONS.md          # ADR-01, ADR-07…ADR-20
-│   ├── OPEN_QUESTIONS.md     # Q01…Q47
+│   ├── DECISIONS.md          # ADR-01, ADR-07…ADR-21
+│   ├── OPEN_QUESTIONS.md     # Q01…Q48
 │   ├── TEST_REPORT.md        # raport testów negatywnych ZR-16 (izolacja A/B, persystencja)
-│   ├── TEST_REPORT_FRONTEND.md # testy klienta, logowania, sesji i formularzy crypto oraz smoke ZR-17/ZR-18
+│   ├── TEST_REPORT_FRONTEND.md # testy klienta, logowania, sesji, crypto i listy oraz smoke ZR-17/ZR-18/ZR-19
 │   └── PROJECT_MEMORY.md     # ten dokument
 ├── scripts/
 │   ├── check-secrets.sh
@@ -386,7 +418,7 @@ Backend stosuje podział package-by-feature:
 - `common/security/` — `PasswordEncoderConfig`, `SecurityFilterChain`, CSRF, obsługa `401`/`403`,
 - `common/web/` — RFC 9457, limity transportu, nagłówki, walidatory.
 
-Frontend ma pustą strukturę feature'ów (`auth/`, `crypto/`, `messages/`) oraz `shared/api`, `shared/ui`. Jedyny ekran to statyczny `App.tsx` z nagłówkiem, statusem projektu i linkiem do repozytorium.
+Frontend ma strukturę feature'ów (`auth/`, `crypto/`, `messages/`) oraz `shared/api`, `shared/ui` i `shared/format.ts`. Ekran składa się z panelu sesji, sekcji crypto i listy zapisanych wiadomości.
 
 ## 5. Baza danych i migracje
 
@@ -487,14 +519,14 @@ AAD:    v1:<ownerId>:<keyId>
 | `ApiProblemFactoryTests` | 2 | RFC 9457, `traceId`, `instance`, lista błędów pól |
 | `PasswordEncoderConfigTests` | 1 | parametry Argon2id, długość 97, dopasowanie poprawnego i błędnego hasła, sól, hasło 128 B |
 
-### Frontend — 71 testów
+### Frontend — 106 testów
 
 | Plik | Liczba | Co sprawdza |
 |---|---:|---|
 | `src/shared/api/client.test.ts` | 8 | brak CSRF dla GET, token z cookie dla POST, pobranie `/api/auth/csrf`, parsowanie RFC 9457/`Retry-After`, fallback dla nie-JSON, jednorazowy retry po `CSRF_INVALID`, `204` |
 | `src/features/auth/LoginForm.test.tsx` | 8 | etykiety/hinty, `aria-describedby` i `aria-invalid`, blokada pustego submita, trim loginu bez trimowania hasła, stan pending, `400`/`401`/`429`, błąd sieci, fokus na błędzie |
 | `src/features/auth/AuthProvider.test.tsx` | 8 | `/me` 200/401/500 z retry, login i brak `ownerId`, logout `204`/`401`/`500`, `401` z crypto kończący sesję, pusty storage i brak hasła w cookies |
-| `src/app/App.test.tsx` | 4 | nagłówek, link do repozytorium, landmark `main` i skip link, zalogowany widok z sekcjami crypto |
+| `src/app/App.test.tsx` | 5 | nagłówek, link do repozytorium, landmark `main` i skip link, zalogowany widok z crypto i pustą listą (jedno `GET /api/messages?limit=10`, brak `owner`), wylogowanie czyszczące listę i plaintext |
 | `src/shared/ui/CopyButton.test.tsx` | 3 | kopiowanie i status, odrzucenie clipboardu, brak Clipboard API |
 | `src/features/crypto/limits.test.ts` | 7 | punkty kodowe vs UTF-16, bajty UTF-8, puste/blank, granice 10 000/40 000 B i 56 000 znaków |
 | `src/features/crypto/api.test.ts` | 4 | ciała `{plaintext}`/`{package}`, CSRF, `201`, brak `ownerId` |
@@ -502,6 +534,10 @@ AAD:    v1:<ownerId>:<keyId>
 | `src/features/crypto/EncryptPanel.test.tsx` | 11 | etykiety i licznik, pusty submit, wynik jako tekst, osobny zapis, pending, błąd pola, `429`, `401`, sieć, kopiowanie |
 | `src/features/crypto/DecryptPanel.test.tsx` | 9 | etykiety, pusty submit, `trim()`, XSS jako tekst, zły format, `DECRYPT_FAILED`, `401`, pending, kopiowanie treści |
 | `src/features/crypto/CryptoWorkspace.test.tsx` | 1 | obie sekcje i pola widoczne jednocześnie |
+| `src/features/messages/api.test.ts` | 6 | `limit=10`, kursor bez reinterpretacji, `AbortSignal`, szczegóły po `id`, decrypt POST bez ciała z CSRF, brak `ownerId` |
+| `src/features/messages/errors.test.ts` | 7 | sieć, `401`, `404`/`INVALID_MESSAGE_ID`, `INVALID_CURSOR`, `429`, `403`, `MESSAGE_UNDECRYPTABLE` vs `500` |
+| `src/features/messages/MessageListItem.test.tsx` | 9 | brak pobierania przy renderze, pakiet po kliknięciu i kopiowanie, ukrycie bez refetchu, decrypt na żądanie, XSS jako tekst, kopiowanie treści, pending, `404`/`MESSAGE_UNDECRYPTABLE` z fokusem, `401` kończący sesję |
+| `src/features/messages/MessagesPanel.test.tsx` | 12 | ładowanie i pustka, brak prefetchu, kolejna strona z kursorem, błąd strony z retry tego samego kursora, błąd pierwszej strony, `401` dla pierwszej i kolejnej strony, `429`, `hasMore` bez kursora, deduplikacja, odświeżenie, abort przy odmontowaniu |
 
 ### Braki
 
@@ -611,14 +647,15 @@ Kolejność rekomendowana:
 5. ~~**Zapis, lista i odczyt wiadomości**~~ — wykonane w ZR-14; izolacja A/B i persystencja pokryte testami w ZR-16. Pozostaje endpoint usuwania oraz limity operacji crypto 60/min i 30/min.
 6. ~~**Frontend logowania**~~ — wykonane w ZR-17: klient API, CSRF, `/me`, formularz i wylogowanie.
 7. ~~**Formularze szyfrowania i deszyfrowania**~~ — wykonane w ZR-18: sekcje encrypt/decrypt, liczniki, kopiowanie, rozdział akcji, mapowanie błędów, 401 kończący sesję i tekst bez `innerHTML`.
-8. **UI listy i usuwania wiadomości** — lista z kursorem, szczegóły, `DELETE /api/messages/{id}` i limitery crypto 60/30 na minutę.
-9. **E2E** — Playwright: logowanie, izolacja użytkowników, CRUD, wylogowanie, błędy walidacji i axe.
-10. **CI i wydajność** — workflow GitHub Actions, `docs/PERFORMANCE.md`, testy obciążeniowe i analiza pamięci Argon2id.
+8. ~~**UI listy zapisanych wiadomości**~~ — wykonane w ZR-19: paginacja kursorem, stany ładowania/pustki/błędu, retry tego samego kursora, podgląd pakietu i deszyfrowanie tylko po kliknięciu, tekst bez `innerHTML`, czyszczenie po wylogowaniu.
+9. **Usuwanie wiadomości** — `DELETE /api/messages/{id}` z owner scope, UI usuwania i potwierdzenie; następnie limitery crypto 60/30 na minutę.
+10. **E2E** — Playwright: logowanie, izolacja użytkowników, CRUD, wylogowanie, błędy walidacji i axe.
+11. **CI i wydajność** — workflow GitHub Actions, `docs/PERFORMANCE.md`, testy obciążeniowe i analiza pamięci Argon2id.
 
 Warunki wejścia do kolejnego zadania:
 
 - drzewo czyste i `main == origin/main`,
-- 125/125 testów backendu i 71/71 frontendu,
+- 125/125 testów backendu i 106/106 frontendu,
 - Compose z trzema zdrowymi kontenerami,
 - dokumentacja i ADR zaktualizowane w tym samym commicie,
 - wpis do Notion z rzeczywistym hashem commita i wynikami komend.

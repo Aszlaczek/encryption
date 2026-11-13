@@ -1,5 +1,6 @@
 import { AuthProvider, LoginForm, SessionPanel, useAuth } from '../features/auth';
 import { CryptoWorkspace } from '../features/crypto';
+import { MessagesPanel } from '../features/messages';
 
 const REPOSITORY_URL = 'https://github.com/Aszlaczek/encryption';
 
@@ -72,6 +73,7 @@ function SessionGate() {
       <>
         <SessionPanel />
         <CryptoWorkspace onSessionExpired={expireSession} />
+        <MessagesPanel key={state.user.id} onSessionExpired={expireSession} />
       </>
     );
   }

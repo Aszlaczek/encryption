@@ -24,7 +24,7 @@ src/
 ├── features/   # pionowe moduły funkcjonalne
 │   ├── auth/       # logowanie, sesja, CSRF
 │   ├── crypto/     # formularze szyfrowania/deszyfrowania, limity, API
-│   └── messages/   # lista, szczegóły, usuwanie (kolejne zadanie)
+│   └── messages/   # lista z paginacją, podgląd pakietu i deszyfrowanie na żądanie
 ├── shared/     # kod współdzielony, niezależny od funkcji
 │   ├── api/        # klient HTTP i obsługa błędów RFC 9457
 │   └── ui/         # dostępne komponenty prezentacyjne (FormField, CopyButton)
@@ -57,4 +57,13 @@ Zasady:
 - `INVALID_PACKAGE_FORMAT` i `DECRYPT_FAILED` mają osobne komunikaty; `429` pokazuje `Retry-After`.
 - `401` z chronionego endpointu kończy sesję: `expireSession()` czyści stan i CSRF, a formularz logowania pokazuje „Sesja wygasła. Zaloguj się ponownie.”.
 
-Testy: `npm test` — 71 testów klienta, formularza logowania, sesji, limitów, API crypto, paneli i widoku aplikacji. Raport i smoke przeglądarkowy: [`../docs/TEST_REPORT_FRONTEND.md`](../docs/TEST_REPORT_FRONTEND.md).
+## Lista zapisanych wiadomości
+
+- `features/messages` pobiera pierwszą stronę przez `GET /api/messages?limit=10` i dokłada kolejne po „Pobierz więcej”, przekazując kursor z poprzedniej odpowiedzi bez jego interpretacji.
+- Lista pokazuje wyłącznie `id` i `createdAt`. Pakiet (`GET /api/messages/{id}`) i plaintext (`POST /api/messages/{id}/decrypt`) są pobierane dopiero po kliknięciu „Pokaż pakiet”/„Odszyfruj” przy wybranej wiadomości; nie ma masowego pobierania treści.
+- Kursor przesuwa się dopiero po sukcesie: błąd strony zachowuje wczytane pozycje i ponawia ten sam kursor. Pozycje są deduplikowane po `id`, a `hasMore` bez kursora jest traktowane jako błąd.
+- Stany mają `role="status"`/`role="alert"` i fokus na alercie; „Odśwież listę” wraca do pierwszej strony.
+- `401` kończy sesję przez `onSessionExpired`. `App` montuje panel z `key={user.id}`, więc wylogowanie i zmiana konta usuwają listę oraz odszyfrowaną treść.
+- Wynik deszyfrowania jest renderowany wyłącznie jako tekst w `<pre>`; nie używaj `dangerouslySetInnerHTML` ani `innerHTML`.
+
+Testy: `npm test` — 106 testów klienta, formularza logowania, sesji, limitów, API crypto, paneli, listy wiadomości i widoku aplikacji. Raport i smoke przeglądarkowy: [`../docs/TEST_REPORT_FRONTEND.md`](../docs/TEST_REPORT_FRONTEND.md).

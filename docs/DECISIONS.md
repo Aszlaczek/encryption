@@ -773,6 +773,39 @@ R01, R03, R08.
 
 ---
 
+## ADR-21 — Lista zapisanych wiadomości i podgląd na żądanie
+
+### Status
+
+**Accepted — 2026-11-13 (ZR-19).**
+
+### Decyzja
+
+1. Lista żyje w `features/messages`: `api.ts` (`listMessages`, `getMessage`, `decryptMessage`), `errors.ts`, `MessagesPanel` i `MessageListItem`. `formatDateTime`/`formatNumber` przeniesiono do `shared/format.ts`, żeby crypto i messages korzystały z jednego formattera.
+2. `features/messages` nie importuje `features/auth` ani `features/crypto`. `MessagesPanel` przyjmuje `onSessionExpired`, a `App.tsx` montuje go z `key={state.user.id}`, dzięki czemu zmiana konta lub wylogowanie odmontowuje panel i usuwa listę oraz odszyfrowaną treść z DOM.
+3. Pierwsza strona to `GET /api/messages?limit=10`. Lista pokazuje wyłącznie `id` i `createdAt`; pakiet (`GET /api/messages/{id}`) i plaintext (`POST /api/messages/{id}/decrypt`) są pobierane dopiero po kliknięciu przy wybranej wiadomości. Nie ma masowego pobierania pakietów ani plaintextu.
+4. Paginacja jest kursorowa i jednokierunkowa: „Pobierz więcej” wysyła `nextCursor` z poprzedniej odpowiedzi. Kursor przesuwa się dopiero po sukcesie, więc błąd strony zachowuje wczytane pozycje i ponawia ten sam kursor. Pozycje są deduplikowane po `id`, a `hasMore && !nextCursor` jest błędem zamiast pętlą.
+5. Stany interfejsu: `role="status"` podczas ładowania, komunikat o pustej liście, `role="alert"` z fokusem dla błędu pierwszej i kolejnej strony. „Odśwież listę” wraca do pierwszej strony, a „Pobierz więcej” znika po wyczerpaniu danych.
+6. Wyniki są renderowane wyłącznie jako tekst: pakiet w `<output>`, plaintext w `<pre>`. Obowiązuje zakaz `dangerouslySetInnerHTML` i `innerHTML`; testy oraz smoke sprawdzają, że `<img onerror>` nie tworzy elementu i nie wykonuje handlera.
+7. `401` z listy, szczegółów lub deszyfrowania kończy sesję przez `onSessionExpired`; pozostałe błędy (`404`, `INVALID_CURSOR`, `403`, `429`, `MESSAGE_UNDECRYPTABLE`, sieć) są mapowane lokalnie i nie czyszczą już wczytanych danych.
+8. Testy integracyjne korzystają z routera `fetch` po ścieżce (`src/test/backend.ts`) zamiast kolejki `mockResolvedValueOnce`, ponieważ po zalogowaniu pojawiło się dodatkowe żądanie listy.
+9. Usuwanie wiadomości pozostaje poza zakresem ZR-19; nie dodano `DELETE` ani przycisku usuwania.
+
+### Konsekwencje
+
+- Użytkownik widzi tylko własne wiadomości, może przewijać historię i świadomie odszyfrować pojedynczy rekord.
+- Otwarcie listy nie ujawnia treści w DOM ani w odpowiedziach HTTP; plaintext powstaje dopiero po jawnej akcji.
+- Błąd kolejnej strony nie gubi danych i nie przeskakuje kursora, co upraszcza retry.
+- Panel jest odmontowywany przy zmianie użytkownika, więc nie trzeba ręcznie czyścić stanu przy wylogowaniu.
+- Brak prefetchu oznacza więcej żądań przy przeglądaniu wielu wiadomości, ale jest to świadomy kompromis bezpieczeństwa i wydajności.
+- Usuwanie i limiter crypto nadal wymagają osobnego zadania.
+
+### Powiązane wymagania
+
+R01, R04, R09.
+
+---
+
 ## Zasady zmian decyzji
 
 - Zmiana zaakceptowanej decyzji wymaga nowego wpisu lub wyraźnego oznaczenia poprzedniego jako `Superseded`.

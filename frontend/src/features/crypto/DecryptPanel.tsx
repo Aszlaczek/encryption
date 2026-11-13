@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CopyButton, FormField, describedBy } from '../../shared/ui';
 import { decryptPackage } from './api';
-import { formatNumber } from './format';
+import { formatNumber } from '../../shared/format';
 import { PACKAGE_MAX_LENGTH, validatePackage } from './limits';
 import { describeCryptoError } from './messages';
 

@@ -127,7 +127,8 @@ body {
 
 .auth-card,
 .session-panel,
-.crypto-panel {
+.crypto-panel,
+.messages-panel {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -139,13 +140,15 @@ body {
 
 .auth-card h2,
 .session-panel h2,
-.crypto-panel h3 {
+.crypto-panel h3,
+.messages-panel h2 {
   margin: 0;
 }
 
 .auth-card__lead,
 .session-panel__note,
-.crypto-panel__lead {
+.crypto-panel__lead,
+.messages-panel__lead {
   margin: 0;
   font-size: 0.9375rem;
 }
@@ -293,11 +296,6 @@ body {
   font-size: 0.9375rem;
 }
 
-.crypto-panel h4 {
-  margin: 0;
-  font-size: 1.0625rem;
-}
-
 .crypto-form {
   display: flex;
   flex-direction: column;
@@ -327,7 +325,8 @@ body {
   font-size: 0.875rem;
 }
 
-.crypto-result {
+.crypto-result,
+.message-result {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -337,16 +336,19 @@ body {
   background-color: color-mix(in srgb, currentColor 4%, transparent);
 }
 
-.crypto-result__meta {
+.crypto-result__meta,
+.message-result__meta {
   margin: 0;
   font-size: 0.9375rem;
 }
 
-.crypto-result__meta code {
+.crypto-result__meta code,
+.message-result__meta code {
   overflow-wrap: anywhere;
 }
 
-.crypto-result__value {
+.crypto-result__value,
+.message-result__value {
   margin: 0;
   padding: 0.75rem;
   max-height: 18rem;
@@ -361,9 +363,74 @@ body {
   overflow-wrap: anywhere;
 }
 
-.crypto-result__value--text {
+.crypto-result__value--text,
+.message-result__value--text {
   font-family: inherit;
   font-size: 1rem;
+}
+
+.crypto-panel h4,
+.message-item h4 {
+  margin: 0;
+  font-size: 1.0625rem;
+}
+
+.messages-panel__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.messages-panel__header .button {
+  align-self: auto;
+}
+
+.messages-panel__empty,
+.messages-panel__footer-note {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.messages-panel__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 0.5rem;
+  background-color: color-mix(in srgb, currentColor 2%, transparent);
+}
+
+.message-item__heading {
+  margin: 0;
+  font-size: 1.0625rem;
+}
+
+.message-item__meta {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.message-item__meta code {
+  overflow-wrap: anywhere;
 }
 
 .copy-button {

@@ -1,4 +1,4 @@
-import { formatNumber } from './format';
+import { formatNumber } from '../../shared/format';
 
 /** Limits mirror `docs/API.md`; the backend stays authoritative. */
 export const PLAINTEXT_MAX_CODE_POINTS = 10_000;
