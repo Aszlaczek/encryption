@@ -741,6 +741,38 @@ R01, R02, R08.
 
 ---
 
+## ADR-20 — Formularze szyfrowania i deszyfrowania w SPA
+
+### Status
+
+**Accepted — 2026-11-13 (ZR-18).**
+
+### Decyzja
+
+1. Formularze żyją w `features/crypto`: `api.ts` (trzy żądania), `limits.ts`, `messages.ts`, `format.ts`, `EncryptPanel`, `DecryptPanel` i `CryptoWorkspace`. `shared/ui/CopyButton` jest wspólnym komponentem prezentacyjnym.
+2. `features/crypto` nie importuje `features/auth`. `CryptoWorkspace` przyjmuje `onSessionExpired`, a kompozycję z `SessionPanel` wykonuje `App.tsx`, który może spinać oba moduły.
+3. Szyfrowanie i deszyfrowanie są dwiema sekcjami widocznymi jednocześnie. „Szyfruj” wywołuje `POST /api/crypto/encrypt` i nic nie zapisuje; „Szyfruj i zapisz” wywołuje `POST /api/messages` i pokazuje `id`, `<time dateTime>` oraz pakiet. Akcje są rozdzielone, bo zapis jest operacją trwałą.
+4. Wyniki są renderowane wyłącznie jako tekst: pakiet w `<output>`, odszyfrowana treść w `<pre>`. Zakazane jest `dangerouslySetInnerHTML` i jakiekolwiek wstrzykiwanie HTML; testy sprawdzają, że payload `<img onerror>` pozostaje tekstem i nie tworzy elementu.
+5. Kopiowanie używa `navigator.clipboard.writeText`. Brak API lub odrzucenie daje komunikat o ręcznym kopiowaniu; nie ma fallbacku do `execCommand` ani zapisu w storage. Kopiowany jest pakiet i odszyfrowana treść.
+6. Klient pomocniczo waliduje 1–10 000 punktów kodowych i 40 000 B UTF-8 plaintextu oraz 56 000 znaków pakietu. Serwer pozostaje źródłem prawdy; klient nie odrzuca pakietu na podstawie własnej interpretacji formatu, żeby komunikaty `INVALID_PACKAGE_FORMAT` i `DECRYPT_FAILED` pochodziły z backendu.
+7. Błędy są mapowane w jednym miejscu: `VALIDATION_FAILED` trafia do pola, `INVALID_PACKAGE_FORMAT` i `DECRYPT_FAILED` mają osobne komunikaty, `429` pokazuje `Retry-After`, `403` po retry informuje o odświeżeniu strony, a błąd sieci nie udaje błędu serwera.
+8. `401` z chronionego endpointu kończy sesję: `AuthProvider.expireSession()` czyści stan i token CSRF, ustawia anonimowość i komunikat „Sesja wygasła. Zaloguj się ponownie.” na formularzu logowania.
+9. Fokus po błędzie pola ustawia efekt na `fieldError`, a nie wywołanie w `catch`, ponieważ textarea jest wtedy jeszcze `disabled`. Liczniki są częścią `aria-describedby`; komunikaty używają `role="status"` lub `role="alert"`.
+
+### Konsekwencje
+
+- Użytkownik może zaszyfrować tekst, skopiować pakiet i odszyfrować go na tym samym koncie bez zapisywania wiadomości.
+- Zapis jest świadomą, osobną akcją, a wynik zawiera identyfikator i czas utworzenia.
+- Treść wiadomości nigdy nie trafia do DOM jako znaczniki, co ogranicza XSS po stronie klienta.
+- Rozdzielenie modułów pozwala rozwijać listę wiadomości bez zależności cyklicznych; `messages` pozostaje pustym modułem do kolejnego zadania.
+- Limity po stronie klienta są wyłącznie UX; zmiana limitów nadal wymaga aktualizacji `docs/API.md` i backendu.
+
+### Powiązane wymagania
+
+R01, R03, R08.
+
+---
+
 ## Zasady zmian decyzji
 
 - Zmiana zaakceptowanej decyzji wymaga nowego wpisu lub wyraźnego oznaczenia poprzedniego jako `Superseded`.

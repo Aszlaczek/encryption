@@ -9,6 +9,7 @@ import {
   type User,
 } from './api';
 import { AuthContext, type SessionState } from './AuthContext';
+import { EXPIRED_SESSION_NOTICE } from './notice';
 
 function sessionErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -21,6 +22,7 @@ function sessionErrorMessage(error: unknown): string {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SessionState>({ status: 'loading' });
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -52,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (credentials: LoginCredentials): Promise<User> => {
     const user = await loginRequest(credentials);
+    setSessionNotice(null);
     setState({ status: 'authenticated', user });
     return user;
   }, []);
@@ -66,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     clearAuthState();
+    setSessionNotice(null);
     setState({ status: 'anonymous' });
   }, []);
 
@@ -74,7 +78,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setReloadKey((value) => value + 1);
   }, []);
 
-  const value = useMemo(() => ({ state, login, logout, refresh }), [state, login, logout, refresh]);
+  const expireSession = useCallback(() => {
+    clearAuthState();
+    setSessionNotice(EXPIRED_SESSION_NOTICE);
+    setState({ status: 'anonymous' });
+  }, []);
+
+  const value = useMemo(
+    () => ({ state, sessionNotice, login, logout, refresh, expireSession }),
+    [state, sessionNotice, login, logout, refresh, expireSession],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

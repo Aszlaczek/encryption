@@ -1,6 +1,6 @@
 # Otwarte kwestie
 
-Stan na **2026-11-06**. Dokument uzupełnia README i ADR-y; każda kwestia ma jawnie wskazany status, żeby nie pozostawiać niejawnych założeń dotyczących dostępu i bezpieczeństwa.
+Stan na **2026-11-13**. Dokument uzupełnia README i ADR-y; każda kwestia ma jawnie wskazany status, żeby nie pozostawiać niejawnych założeń dotyczących dostępu i bezpieczeństwa.
 
 ## Legenda
 
@@ -60,6 +60,7 @@ Stan na **2026-11-06**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q44 | Źródło i profil kont demo | `application-local.properties`; seed tylko przy profilu `local`; Compose domyślnie `local`, nadpisywalny przez `SPRING_PROFILES_ACTIVE`; poza `local` brak seedu | Przyjęte | ADR-13, R02/R06 |
 | Q45 | Logowanie, sesja i CSRF | Ręczny login JSON; `JSESSIONID` `HttpOnly`/`SameSite=Lax`/30 min; `XSRF-TOKEN` + `X-XSRF-TOKEN`; rotacja sesji i tokenu po logowaniu; login zawsze wymaga CSRF; `401` przed `403`; limiter 5 nieudanych/60 s na IP+login, wygaśnięcie okna testowane kontrolowanym zegarem; `Secure` przez `SESSION_COOKIE_SECURE` | Przyjęte | ADR-14, R02/R06 |
 | Q46 | Sesja i CSRF w SPA | Sesja wyłącznie w cookie `JSESSIONID`; token CSRF z cookie `XSRF-TOKEN` tylko dla mutacji; brak `localStorage`/`sessionStorage`/IndexedDB; po rotacji reset tokenu i jednorazowy retry `403 CSRF_INVALID`; `/me` 401 = anonim; błędy `400`/`401`/`429` mapowane w formularzu | Przyjęte | ADR-19, R01/R02/R08 |
+| Q47 | Formularze szyfrowania i deszyfrowania w SPA | Dwie sekcje widoczne jednocześnie; „Szyfruj” bez zapisu i osobne „Szyfruj i zapisz”; wyniki jako tekst (`<output>`/`<pre>`), bez `innerHTML`; kopiowanie pakietu i treści przez Clipboard API z komunikatem o ręcznym fallbacku; klient pomocniczo waliduje 10 000 punktów kodowych / 40 000 B / 56 000 znaków, a serwer pozostaje źródłem prawdy; `401` kończy sesję i pokazuje komunikat na logowaniu | Przyjęte | ADR-20, R01/R03/R08 |
 
 ## Zasady rozstrzygania
 

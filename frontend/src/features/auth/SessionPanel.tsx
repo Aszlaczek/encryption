@@ -36,9 +36,6 @@ export function SessionPanel() {
       <p>
         Jesteś zalogowany jako <strong>{state.user.username}</strong>.
       </p>
-      <p className="session-panel__note">
-        Lista i edytor wiadomości pojawią się w kolejnym zadaniu.
-      </p>
       {error ? (
         <div className="alert alert--error" role="alert">
           {error}

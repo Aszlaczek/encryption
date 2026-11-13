@@ -12,7 +12,7 @@ const USERNAME_HINT = 'Login nie jest wrażliwy na wielkość liter.';
 const PASSWORD_HINT = 'Hasło jest wrażliwe na wielkość liter i spacje.';
 
 export function LoginForm() {
-  const { login } = useAuth();
+  const { login, sessionNotice } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -115,6 +115,12 @@ export function LoginForm() {
         Użyj konta demonstracyjnego <strong>alice</strong> lub <strong>bob</strong>. Hasła znajdują
         się w dokumentacji projektu.
       </p>
+
+      {sessionNotice ? (
+        <div className="alert alert--info" role="status">
+          {sessionNotice}
+        </div>
+      ) : null}
 
       {formError ? (
         <div className="alert alert--error" role="alert" tabIndex={-1} ref={alertRef}>

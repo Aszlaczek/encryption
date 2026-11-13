@@ -1,11 +1,12 @@
-# Raport testów frontendu — klient API, logowanie i sesja (ZR-17)
+# Raport testów frontendu — klient API, logowanie, sesja i formularze crypto (ZR-17/ZR-18)
 
 - **Data:** 2026-11-13
-- **Zadanie:** ZR-17 — frontend logowania i klient API
-- **Wymagania:** R01, R02, R08
-- **Zależności potwierdzone:** ZR-04 (`5cf29ca`), ZR-08 (`fb2c9b5`), ZR-15 (`a310d9e`)
-- **Commit funkcjonalny:** `c51a319`
-- **Zakres kodu:** `frontend/src/shared/api/`, `frontend/src/features/auth/`, `frontend/src/app/App.tsx`, `frontend/vite.config.ts`, `frontend/src/styles/global.css`
+- **Zadania:** ZR-17 — klient API i logowanie; ZR-18 — formularze szyfrowania i deszyfrowania
+- **Wymagania:** R01, R02, R03, R08
+- **Zależności ZR-18 potwierdzone:** ZR-13 (`7c10342`), ZR-14 (`66fce7a`), ZR-17 (`c51a319`)
+- **Commit funkcjonalny ZR-17:** `c51a319`; ZR-18 — hash w commicie statusowym
+- **Zakres kodu ZR-17:** `frontend/src/shared/api/`, `frontend/src/features/auth/`, `frontend/src/app/App.tsx`, `frontend/vite.config.ts`, `frontend/src/styles/global.css`
+- **Zakres kodu ZR-18:** `frontend/src/features/crypto/`, `frontend/src/shared/ui/CopyButton.tsx`, `frontend/src/features/auth/` (`expireSession`), `frontend/src/app/App.tsx`, `frontend/src/styles/global.css`
 
 ## 1. Środowisko
 
@@ -116,3 +117,111 @@ Konsola przeglądarki nie zgłosiła błędów aplikacji; odnotowano wyłącznie
 | Data | Zmiana | Uzasadnienie | Problem i rozwiązanie | Testy | Następny krok |
 |---|---|---|---|---|---|
 | 2026-11-13 | Dodano `shared/api` (klient, `ApiError`, CSRF), `features/auth` (API, `AuthProvider`, `useAuth`, `LoginForm`, `SessionPanel`), `shared/ui/FormField`, przebudowano `App`, dodano proxy Vite i style. | Realizacja R01, R02, R08: logowanie i wylogowanie z backendem, dostępne błędy pól, brak sekretów w storage. | (1) ESLint blokował synchroniczny `setState` w efekcie — przeniesiono ustawianie `loading` do akcji retry. (2) `FormField.tsx` i `formField.ts` kolidowały na case-insensitive macOS i komponent był `undefined` — helper przeniesiono do `fieldDescription.ts`. (3) Retry CSRF używał starego cookie — klient preferuje teraz token w pamięci po wymuszonym odświeżeniu. | `npm run lint`, `format:check`, `npm test` 26/26, `npm run build`; smoke Playwright PASS. | UI listy/edytora wiadomości, potem `DELETE` i limitery crypto. |
+
+## 9. ZR-18 — formularze szyfrowania i deszyfrowania
+
+- **Data:** 2026-11-13
+- **Wymagania:** R01, R03, R08
+- **Zależności potwierdzone:** ZR-13 (`7c10342`), ZR-14 (`66fce7a`), ZR-17 (`c51a319`)
+- **Commit funkcjonalny:** hash w commicie statusowym
+- **Zakres kodu:** `frontend/src/features/crypto/` (`api.ts`, `limits.ts`, `messages.ts`, `format.ts`, `EncryptPanel`, `DecryptPanel`, `CryptoWorkspace`), `frontend/src/shared/ui/CopyButton.tsx`, `frontend/src/features/auth/` (`expireSession`, komunikat o wygaśnięciu), `frontend/src/app/App.tsx`, `frontend/src/styles/global.css`
+
+### 9.1 Komendy i wyniki
+
+```text
+cd frontend && npm run lint          -> OK (0 błędów, 0 ostrzeżeń)
+cd frontend && npm run format:check  -> All matched files use Prettier code style!
+cd frontend && npm test              -> Test Files 11 passed (11), Tests 71 passed (71)
+cd frontend && npm run build         -> tsc -b + vite build, dist/ wygenerowany
+docker compose up -d --build frontend -> frontend healthy; 3 kontenery healthy
+curl http://localhost:3000/actuator/health -> 200
+POST /api/crypto/encrypt bez sesji   -> 401
+POST /api/crypto/encrypt (alice)     -> 200, package v1.k1...
+POST /api/crypto/decrypt (alice)     -> 200, "Zażółć gęślą jaźń 🔐"
+POST /api/messages                   -> 201, id + createdAt + package
+POST /api/crypto/decrypt zapisanego  -> 200, "Wiadomość zapisana przez smoke test"
+POST /api/crypto/decrypt "nie-pakiet" -> 400 INVALID_PACKAGE_FORMAT
+POST /api/crypto/decrypt obcy pakiet -> 422 DECRYPT_FAILED
+grep -rn "dangerouslySetInnerHTML|innerHTML" src -> brak wystąpień
+./scripts/check-secrets.sh           -> OK
+git diff --check                     -> OK
+```
+
+Build produkcyjny: `dist/index.html` 0,59 kB, CSS 5,26 kB, JS 241,33 kB (gzip 75,09 kB).
+
+### 9.2 Testy (71)
+
+| Plik | Liczba | Scenariusze |
+|---|---:|---|
+| `src/shared/api/client.test.ts` | 8 | bez zmian z ZR-17: CSRF, RFC 9457, retry, `204` |
+| `src/features/auth/LoginForm.test.tsx` | 8 | bez zmian z ZR-17: etykiety, błędy pól, pending, `401`/`429`/sieć |
+| `src/features/auth/AuthProvider.test.tsx` | 8 | ZR-17 + `401` z crypto kończy sesję i pokazuje komunikat na logowaniu |
+| `src/app/App.test.tsx` | 4 | ZR-17 + zalogowany widok zawiera obie sekcje crypto |
+| `src/shared/ui/CopyButton.test.tsx` | 3 | kopiowanie i `role="status"`; odrzucenie clipboardu; brak Clipboard API |
+| `src/features/crypto/limits.test.ts` | 7 | punkty kodowe vs UTF-16; bajty UTF-8; puste/blank; granice 10 000 i 40 000 B; granica 56 000 znaków |
+| `src/features/crypto/api.test.ts` | 4 | ciała `{plaintext}`/`{package}`; CSRF; `201`; brak `ownerId` |
+| `src/features/crypto/messages.test.ts` | 8 | sieć, `401`, błąd pola, `detail`, format vs `DECRYPT_FAILED`, `429`, `403`, `5xx` |
+| `src/features/crypto/EncryptPanel.test.tsx` | 11 | etykiety i licznik; pusty submit; wynik jako tekst; osobny zapis; pending; błąd pola; `429`; `401`; sieć; kopiowanie |
+| `src/features/crypto/DecryptPanel.test.tsx` | 9 | etykiety; pusty submit; `trim()`; XSS jako tekst; zły format; `DECRYPT_FAILED`; `401`; pending; kopiowanie treści |
+| `src/features/crypto/CryptoWorkspace.test.tsx` | 1 | obie sekcje i pola widoczne jednocześnie |
+
+Klient crypto jest testowany na zamockowanym `fetch`, a panele na zamockowanym module `./api`; `CopyButton` i kopiowanie w panelach używają podstawionego `navigator.clipboard` (nadpisywanego po `userEvent.setup()`).
+
+### 9.3 Mapowanie kryteriów akceptacji
+
+| Kryterium | Dowód |
+|---|---|
+| Pakiet można skopiować i odszyfrować na tym samym koncie | `EncryptPanel` — „copies the encrypted package”; `DecryptPanel` — round-trip treści; smoke: `navigator.clipboard.readText()` zwrócił dokładnie pakiet, a `POST /api/crypto/decrypt` zwrócił `Zażółć gęślą jaźń 🔐`; zapisany pakiet również odszyfrowany |
+| Błędny pakiet daje czytelny komunikat | `messages.test.ts` i `DecryptPanel.test.tsx` rozróżniają `INVALID_PACKAGE_FORMAT` („Pakiet ma nieprawidłowy format…”) od `DECRYPT_FAILED` („Nie udało się odszyfrować pakietu…”); smoke potwierdził `400` i `422` z tymi komunikatami |
+| Treść renderowana jako tekst bez `innerHTML` | `DecryptPanel` — payload `<img src=x onerror="window.__xss=1">` jest widoczny jako tekst, `region.querySelector('img') === null`, handler nie wykonał się; smoke: 0 elementów `img`; `grep` po `src` nie znajduje `innerHTML` ani `dangerouslySetInnerHTML` |
+
+### 9.4 Smoke w przeglądarce
+
+Playwright 1.64.1 + Google Chrome (headless), ad-hoc poza repozytorium, przeciwko Compose i nginx. Uprawnienia `clipboard-read`/`clipboard-write` nadane dla `http://localhost:3000`.
+
+| Krok | Oczekiwanie | Wynik |
+|---|---|---|
+| Logowanie `alice` / `AliceDemo123!` | widok „Zalogowano” i nagłówek „Szyfrowanie i deszyfrowanie” | PASS |
+| Pusty submit szyfrowania | komunikat „Wpisz treść wiadomości.”, fokus na textarea | PASS |
+| „Szyfruj” z tekstem Unicode/emoji | pakiet `v1.…`, brak zapisu | PASS |
+| „Kopiuj pakiet” | schowek zawiera dokładnie pakiet, status „Skopiowano pakiet” | PASS |
+| Wklejenie pakietu i „Odszyfruj” | treść identyczna z wejściem | PASS |
+| Szyfrowanie i deszyfrowanie `<img onerror>` | tekst zamiast elementu; 0 `img`; brak `window.__xss` | PASS |
+| Pakiet `nie-pakiet` | komunikat o nieprawidłowym formacie | PASS |
+| Pakiet obcego pochodzenia | komunikat `DECRYPT_FAILED` | PASS |
+| „Szyfruj i zapisz” | `201`, ID 36 znaków, `<time datetime>`, pakiet | PASS |
+| Deszyfrowanie zapisanego pakietu | treść identyczna | PASS |
+| Storage po operacjach | `localStorage`, `sessionStorage`, IndexedDB puste; brak plaintextu i hasła w cookies | PASS |
+
+Sekwencja API zarejestrowana przez Playwright:
+
+```text
+GET  /api/auth/me         401
+GET  /api/auth/csrf       200
+POST /api/auth/login      200
+POST /api/crypto/encrypt  200
+POST /api/crypto/decrypt  200
+POST /api/crypto/encrypt  200
+POST /api/crypto/decrypt  200
+POST /api/crypto/decrypt  400
+POST /api/crypto/decrypt  422
+POST /api/messages        201
+POST /api/crypto/decrypt  200
+```
+
+Konsola przeglądarki nie zgłosiła błędów strony (`pageerror` puste); odnotowano wyłącznie oczekiwane wpisy sieciowe dla `401`, `400` i `422`.
+
+### 9.5 Ograniczenia
+
+- Smoke Playwright był jednorazowy i nie jest commitowany; formalne E2E i axe pozostają osobnym zadaniem.
+- Testy komponentów mockują moduł API; realny kontrakt potwierdzają testy `api.test.ts` i smoke.
+- Limiter crypto 60/30 nie istnieje w backendzie; mapowanie `429` jest pokryte testem jednostkowym, nie realnym żądaniem.
+- Kopiowanie wymaga bezpiecznego kontekstu (localhost lub HTTPS); przy odmowie użytkownik dostaje komunikat o ręcznym kopiowaniu.
+- Brak jeszcze listy i usuwania zapisanych wiadomości; formularz szyfrowania jest jedynym edytorem treści.
+- Brak testów responsywności i zrzutów przy 360/768/1280 px; R07 pozostaje otwarte.
+
+### 9.6 Dziennik wykonania
+
+| Data | Zmiana | Uzasadnienie | Problem i rozwiązanie | Testy | Następny krok |
+|---|---|---|---|---|---|
+| 2026-11-13 | Dodano `features/crypto` (API, limity, mapowanie błędów, panele, workspace), `shared/ui/CopyButton`, `expireSession` i komunikat o wygaśnięciu sesji; zaktualizowano `App`, `SessionPanel`, style i testy. | Realizacja R01, R03, R08: szyfrowanie bez zapisu i z zapisem, deszyfrowanie wklejonego pakietu, kopiowanie, czytelne błędy i treść bez `innerHTML`. | (1) `userEvent.setup()` nadpisywał podstawiony `navigator.clipboard`, więc testy kopiowania padały — clipboard ustawiany jest po `setup()`. (2) `.focus()` na textarea w `catch` nie działał, bo pole było jeszcze `disabled` — fokus przeniesiono do efektu na `fieldError`. (3) `Intl.NumberFormat('pl-PL')` wstawia niełamliwe spacje — testy polegają na normalizacji białych znaków. | `npm run lint`, `format:check`, `npm test` 71/71, `npm run build`; smoke Playwright PASS; `check-secrets` i `git diff --check` OK. | UI listy i usuwania wiadomości, `DELETE`, limitery crypto, potem formalne E2E i CI. |

@@ -1,6 +1,4 @@
-/**
- * Cryptography module boundary.
- *
- * Planned: encrypt-with-save, encrypt-without-save and decrypt flows, including pasted packages.
- */
-export {};
+export { CryptoWorkspace } from './CryptoWorkspace';
+export { DecryptPanel } from './DecryptPanel';
+export { EncryptPanel } from './EncryptPanel';
+export type { DecryptResponse, EncryptResponse, SavedMessage } from './api';

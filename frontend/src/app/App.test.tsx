@@ -51,4 +51,16 @@ describe('App', () => {
       '#main-content',
     );
   });
+
+  it('renders the crypto workspace for an authenticated session', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ body: { id: 'u1', username: 'alice' } }));
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Szyfrowanie i deszyfrowanie' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Treść wiadomości')).toBeInTheDocument();
+    expect(screen.getByLabelText('Pakiet do odszyfrowania')).toBeInTheDocument();
+  });
 });

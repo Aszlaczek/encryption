@@ -1,4 +1,5 @@
 import { AuthProvider, LoginForm, SessionPanel, useAuth } from '../features/auth';
+import { CryptoWorkspace } from '../features/crypto';
 
 const REPOSITORY_URL = 'https://github.com/Aszlaczek/encryption';
 
@@ -42,7 +43,7 @@ function AppLayout() {
 }
 
 function SessionGate() {
-  const { state, refresh } = useAuth();
+  const { state, refresh, expireSession } = useAuth();
 
   if (state.status === 'loading') {
     return (
@@ -67,7 +68,12 @@ function SessionGate() {
   }
 
   if (state.status === 'authenticated') {
-    return <SessionPanel />;
+    return (
+      <>
+        <SessionPanel />
+        <CryptoWorkspace onSessionExpired={expireSession} />
+      </>
+    );
   }
 
   return <LoginForm />;

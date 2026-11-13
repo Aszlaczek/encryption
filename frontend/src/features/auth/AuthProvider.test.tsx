@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../app/App';
@@ -140,6 +140,28 @@ describe('AuthProvider session flow', () => {
     await user.click(screen.getByRole('button', { name: 'Wyloguj się' }));
 
     expect(await screen.findByRole('heading', { name: 'Zaloguj się' })).toBeInTheDocument();
+  });
+
+  it('ends the session and explains why when a protected request returns 401', async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(mockResponse({ body: { id: 'u1', username: 'alice' } }))
+      .mockResolvedValueOnce(unauthenticated());
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Szyfrowanie i deszyfrowanie' });
+    fireEvent.change(screen.getByLabelText('Pakiet do odszyfrowania'), {
+      target: { value: 'v1.k1.nonce.cipher.tag' },
+    });
+    await user.click(screen.getByRole('button', { name: 'Odszyfruj' }));
+
+    expect(await screen.findByRole('heading', { name: 'Zaloguj się' })).toBeInTheDocument();
+    expect(screen.getByText('Sesja wygasła. Zaloguj się ponownie.')).toBeInTheDocument();
+    const [path, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(path).toBe('/api/crypto/decrypt');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ package: 'v1.k1.nonce.cipher.tag' });
   });
 
   it('keeps the session and shows an alert when logout fails', async () => {

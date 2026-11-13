@@ -23,11 +23,11 @@ src/
 ├── app/        # kompozycja aplikacji, strona główna, testy
 ├── features/   # pionowe moduły funkcjonalne
 │   ├── auth/       # logowanie, sesja, CSRF
-│   ├── crypto/     # szyfrowanie i deszyfrowanie
-│   └── messages/   # lista, szczegóły, usuwanie
+│   ├── crypto/     # formularze szyfrowania/deszyfrowania, limity, API
+│   └── messages/   # lista, szczegóły, usuwanie (kolejne zadanie)
 ├── shared/     # kod współdzielony, niezależny od funkcji
 │   ├── api/        # klient HTTP i obsługa błędów RFC 9457
-│   └── ui/         # dostępne komponenty prezentacyjne
+│   └── ui/         # dostępne komponenty prezentacyjne (FormField, CopyButton)
 ├── styles/     # style globalne
 └── test/       # konfiguracja testów
 ```
@@ -47,4 +47,14 @@ Zasady:
 - Po logowaniu i wylogowaniu token CSRF jest resetowany; `403 CSRF_INVALID` powoduje jedną ponowną próbę po `GET /api/auth/csrf`.
 - Tryb dev proxuje `/api` i `/actuator`; cel zmienisz przez `VITE_API_PROXY_TARGET` (domyślnie `http://localhost:8080`). W Compose ten sam origin zapewnia nginx na `http://localhost:3000`.
 
-Testy: `npm test` — 26 testów klienta, formularza, sesji i widoku aplikacji. Raport i smoke przeglądarkowy: [`../docs/TEST_REPORT_FRONTEND.md`](../docs/TEST_REPORT_FRONTEND.md).
+## Szyfrowanie i deszyfrowanie
+
+- `features/crypto` ma dwie sekcje widoczne jednocześnie: „Szyfrowanie” i „Deszyfrowanie”.
+- „Szyfruj” wywołuje `POST /api/crypto/encrypt` i nic nie zapisuje; „Szyfruj i zapisz” wywołuje `POST /api/messages` i pokazuje `id`, czas oraz pakiet.
+- Licznik pokazuje punkty kodowe i bajty UTF-8 (limit 10 000 / 40 000 B); pakiet ma limit 56 000 znaków. Serwer pozostaje źródłem prawdy.
+- Pakiet i odszyfrowana treść są kopiowane przez Clipboard API. Brak API lub odmowa daje komunikat o ręcznym kopiowaniu.
+- Wynik jest renderowany wyłącznie jako tekst (`<output>`, `<pre>`); nie używaj `dangerouslySetInnerHTML`.
+- `INVALID_PACKAGE_FORMAT` i `DECRYPT_FAILED` mają osobne komunikaty; `429` pokazuje `Retry-After`.
+- `401` z chronionego endpointu kończy sesję: `expireSession()` czyści stan i CSRF, a formularz logowania pokazuje „Sesja wygasła. Zaloguj się ponownie.”.
+
+Testy: `npm test` — 71 testów klienta, formularza logowania, sesji, limitów, API crypto, paneli i widoku aplikacji. Raport i smoke przeglądarkowy: [`../docs/TEST_REPORT_FRONTEND.md`](../docs/TEST_REPORT_FRONTEND.md).

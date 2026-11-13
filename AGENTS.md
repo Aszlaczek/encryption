@@ -8,11 +8,11 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-13)
 
-- Ostatni commit funkcjonalny: `c51a319` (ZR-17); drzewo powinno być czyste.
-- Ukończone: ZR-01…ZR-17.
-- Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem.
-- **Nie ma jeszcze** usuwania wiadomości, limitera crypto 60/30 na minutę oraz UI listy/edytora wiadomości. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
-- Testy: 125/125 backendu (`./mvnw spotless:check verify`), 26/26 frontendu (`npm test`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md).
+- Ostatni commit funkcjonalny: ZR-18 (formularze szyfrowania i deszyfrowania; hash w commicie statusowym); drzewo powinno być czyste.
+- Ukończone: ZR-01…ZR-18.
+- Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem; formularze szyfrowania/deszyfrowania z licznikami, kopiowaniem, rozdziałem „Szyfruj”/„Szyfruj i zapisz”, mapowaniem błędów i renderowaniem treści wyłącznie jako tekst.
+- **Nie ma jeszcze** usuwania wiadomości, limitera crypto 60/30 na minutę oraz UI listy i usuwania zapisanych wiadomości. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
+- Testy: 125/125 backendu (`./mvnw spotless:check verify`), 71/71 frontendu (`npm test`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md).
 
 ## Najpierw przeczytaj
 
@@ -20,10 +20,10 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 2. [`README.md`](README.md) — status, uruchomienie, dowody R01–R10.
 3. [`docs/API.md`](docs/API.md) — **kanoniczny** kontrakt HTTP, DTO, błędy, format pakietu, kursor.
 4. [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — schemat, mapowanie JPA, migracje, Argon2id.
-5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-19.
-6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q46 (rozstrzygnięte i otwarte).
+5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-20.
+6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q47 (rozstrzygnięte i otwarte).
 7. [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) — raport testów negatywnych ZR-16 (izolacja A/B, persystencja, kontrola mutacyjna).
-8. [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) — testy klienta, formularza i sesji oraz smoke Playwright ZR-17.
+8. [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) — testy klienta, logowania, sesji i formularzy crypto oraz smoke Playwright ZR-17/ZR-18.
 
 Gdy dokumenty się różnią, rozstrzyga `docs/API.md` dla HTTP i `docs/DATA_MODEL.md` dla bazy. Zmiana zachowania wymaga aktualizacji dokumentu i ADR w **tym samym commicie**.
 
@@ -133,7 +133,11 @@ docker compose exec -T db psql -U encryption -d encryption -c 'select username, 
 - **Sesja frontendu tylko w cookie** — `JSESSIONID` jest `HttpOnly`; nie dodawaj `localStorage`/`sessionStorage`/IndexedDB dla użytkownika, hasła ani wiadomości. Stan Reacta jest jedyną kopią po stronie klienta.
 - **CSRF w SPA** — token czytaj z cookie `XSRF-TOKEN`, wysyłaj tylko dla mutacji; po logowaniu/wylogowaniu resetuj token, a `403 CSRF_INVALID` obsłuż jedną ponowną próbą po `/api/auth/csrf`.
 - **Case-insensitive macOS** — nie twórz plików różniących się tylko wielkością liter (np. `FormField.tsx` i `formField.ts`), bo import może wskazać zły moduł i komponent będzie `undefined`.
+- **Clipboard w testach** — `userEvent.setup()` podstawia własny stub `navigator.clipboard`; nadpisuj go po `setup()`. W przeglądarce kopiowanie wymaga bezpiecznego kontekstu, a UI musi mieć komunikat o ręcznym kopiowaniu.
+- **Fokus po błędzie** — nie wywołuj `.focus()` na textarea, gdy `pending` jest jeszcze `true` (pole jest `disabled`); użyj efektu na `fieldError`, jak w `LoginForm`.
+- **401 w crypto** — `features/crypto` nie importuje `features/auth`; `CryptoWorkspace` dostaje `onSessionExpired`, a `AuthProvider.expireSession()` czyści CSRF i pokazuje komunikat na logowaniu.
+- **Treść tylko jako tekst** — wynik deszyfrowania renderuj przez `{plaintext}` w `<pre>`/`<output>`; nie używaj `dangerouslySetInnerHTML` ani `innerHTML`.
 
 ## Następny krok
 
-UI listy, edytora i usuwania wiadomości w React (wykorzystanie wspólnego klienta API i sesji z ZR-17), a następnie `DELETE /api/messages/{id}` i limitery crypto 60/min i 30/min. Potem formalne testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).
+UI listy i usuwania zapisanych wiadomości w React (wykorzystanie wspólnego klienta API i sesji z ZR-17 oraz formularzy z ZR-18), a następnie `DELETE /api/messages/{id}` i limitery crypto 60/min i 30/min. Potem formalne testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).
