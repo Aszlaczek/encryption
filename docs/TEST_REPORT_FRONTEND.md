@@ -4,7 +4,7 @@
 - **Zadania:** ZR-17 — klient API i logowanie; ZR-18 — formularze szyfrowania i deszyfrowania
 - **Wymagania:** R01, R02, R03, R08
 - **Zależności ZR-18 potwierdzone:** ZR-13 (`7c10342`), ZR-14 (`66fce7a`), ZR-17 (`c51a319`)
-- **Commit funkcjonalny ZR-17:** `c51a319`; ZR-18 — hash w commicie statusowym
+- **Commit funkcjonalny ZR-17:** `c51a319`; ZR-18: `26fda0d`
 - **Zakres kodu ZR-17:** `frontend/src/shared/api/`, `frontend/src/features/auth/`, `frontend/src/app/App.tsx`, `frontend/vite.config.ts`, `frontend/src/styles/global.css`
 - **Zakres kodu ZR-18:** `frontend/src/features/crypto/`, `frontend/src/shared/ui/CopyButton.tsx`, `frontend/src/features/auth/` (`expireSession`), `frontend/src/app/App.tsx`, `frontend/src/styles/global.css`
 
@@ -123,7 +123,7 @@ Konsola przeglądarki nie zgłosiła błędów aplikacji; odnotowano wyłącznie
 - **Data:** 2026-11-13
 - **Wymagania:** R01, R03, R08
 - **Zależności potwierdzone:** ZR-13 (`7c10342`), ZR-14 (`66fce7a`), ZR-17 (`c51a319`)
-- **Commit funkcjonalny:** hash w commicie statusowym
+- **Commit funkcjonalny:** `26fda0d`
 - **Zakres kodu:** `frontend/src/features/crypto/` (`api.ts`, `limits.ts`, `messages.ts`, `format.ts`, `EncryptPanel`, `DecryptPanel`, `CryptoWorkspace`), `frontend/src/shared/ui/CopyButton.tsx`, `frontend/src/features/auth/` (`expireSession`, komunikat o wygaśnięciu), `frontend/src/app/App.tsx`, `frontend/src/styles/global.css`
 
 ### 9.1 Komendy i wyniki
