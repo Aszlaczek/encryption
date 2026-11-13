@@ -2,7 +2,7 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-15 — walidacja auth/crypto/messages zwraca stabilne kody RFC 9457; wejścia ograniczane są w punktach kodowych i bajtach UTF-8, błędy nie zawierają odrzuconej treści, a API zachowuje `no-store` i `X-Request-Id`. Pełne testy backendu: **115/115**. Zaimplementowane endpointy obejmują logowanie, szyfrowanie, zapis, listę, szczegóły i deszyfrowanie. Usuwanie wiadomości, limiter crypto 60/30 na minutę, frontend, E2E i CI pozostają do wykonania.
+> **Status:** ZR-16 — izolację dwóch użytkowników i persystencję pokryto testami MockMvc/Testcontainers na PostgreSQL 16: lista, szczegóły, deszyfrowanie zapisanej wiadomości, wklejony obcy pakiet, sesja, CSRF, SQL injection i faktyczne wiersze bazy. Pełne testy backendu: **125/125**; raport negatywny: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md). Zaimplementowane endpointy obejmują logowanie, szyfrowanie, zapis, listę, szczegóły i deszyfrowanie. Usuwanie wiadomości, limiter crypto 60/30 na minutę, frontend, E2E i CI pozostają do wykonania.
 
 **Repozytorium:** <https://github.com/Aszlaczek/encryption>
 
@@ -169,11 +169,11 @@ node scripts/validate-api-contract.mjs
 | ID | Wymaganie | Planowany dowód |
 |---|---|---|
 | R01 | Frontend JavaScript z React/Angular | Szkielet React 19 + Vite 7 + TypeScript 6; `npm run build` oraz 3 testy komponentów (Vitest + RTL); E2E Playwright w kolejnym zadaniu |
-| R02 | Logowanie i walidacja danych | Kontrakt logowania, sesji i CSRF w `docs/API.md`; `PasswordEncoder` Argon2id (16 MiB, 2 iteracje, salt 16 B, hash 32 B); `AppUserDetailsService` i `AppUserPrincipal`; konta demo tylko w profilu `local`; endpointy `csrf`, `login`, `me`, `logout`; rotacja sesji i CSRF; limit 5 nieudanych prób/60 s z testem wygaśnięcia okna na kontrolowanym zegarze; walidacja JSON, `413`, `415` i błędy RFC 9457; 16 testów integracyjnych auth + 7 jednostkowych; E2E w kolejnym zadaniu |
+| R02 | Logowanie i walidacja danych | Kontrakt logowania, sesji i CSRF w `docs/API.md`; `PasswordEncoder` Argon2id (16 MiB, 2 iteracje, salt 16 B, hash 32 B); `AppUserDetailsService` i `AppUserPrincipal`; konta demo tylko w profilu `local`; endpointy `csrf`, `login`, `me`, `logout`; rotacja sesji i CSRF; limit 5 nieudanych prób/60 s z testem wygaśnięcia okna na kontrolowanym zegarze; walidacja JSON, `413`, `415` i błędy RFC 9457; 16 testów integracyjnych auth + 7 jednostkowych; izolacja sesji A/B w `MessageIsolationIntegrationTests` (10); E2E w kolejnym zadaniu |
 | R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Spring Boot 4.1.2 / Java 17; `./mvnw verify` z Testcontainers PostgreSQL 16 i Flyway; kontrakt AES-256-GCM w `docs/API.md`; konfiguracja klucza AES-256 (`CryptoKey`, walidacja 32 B i `keyId=k1`) oraz testy startowe; `CryptoService`/`PackageCodec` z AES-256-GCM, nonce 12 B, tagiem 128 bitów, AAD `v1:<ownerId>:<keyId>`, walidacją pakietu i wektorem z dokumentacji; 49 testów jednostkowych kryptografii (round-trip Unicode/emoji/nowych linii, nonce, tag, granice) |
-| R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`–`V3` (V3 tylko komentarz), ograniczenia CHECK, FK i indeks; encje `AppUser`/`Message` i repozytoria owner-scoped z zapytaniem kursorowym; 7 testów integracyjnych na Testcontainers PostgreSQL 16 (`./mvnw verify`); walidacja schematu (`./scripts/validate-schema.sh`); kontrakt CRUD i paginacji w `docs/API.md` |
+| R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`–`V3` (V3 tylko komentarz), ograniczenia CHECK, FK i indeks; encje `AppUser`/`Message` i repozytoria owner-scoped z zapytaniem kursorowym; 7 testów integracyjnych na Testcontainers PostgreSQL 16 (`./mvnw verify`); walidacja schematu (`./scripts/validate-schema.sh`); kontrakt CRUD i paginacji w `docs/API.md`; `MessageIsolationIntegrationTests` (10) sprawdza faktyczne wiersze, koperty i historię Flyway |
 | R05 | Uruchomienie lokalne w Dockerze | Trzy usługi Compose z healthcheckami; jednorazowa generacja klucza (`./scripts/generate-crypto-key.sh`) → `docker compose up -d --build` kończy się `healthy`; sekret jest montowany tylko do backendu; tylko `3000:80` jest publiczne; backend łączy się z `db:5432`; wolumen `encryption_pgdata` przeżywa restart |
-| R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Macierz statusów, katalog kodów, `404` dla obcych zasobów i limity w `docs/API.md`; `SecurityFilterChain` z kolejnością `401` przed `403`; CSRF wymagany dla logowania i mutacji zalogowanych; odrzucanie nieznanych pól JSON; limit rozmiaru żądania; `Cache-Control: no-store` i `X-Request-Id`; walidacja klucza przy starcie i brak sekretu w Git/obrazie; testy integracyjne błędów, walidacji, `413`/`415`, `429` i izolacji sesji; testy kryptografii potwierdzają odrzucenie zmienionego AAD (obcy właściciel), tagu i klucza bez ujawnienia plaintextu |
+| R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Macierz statusów, katalog kodów, `404` dla obcych zasobów i limity w `docs/API.md`; `SecurityFilterChain` z kolejnością `401` przed `403`; CSRF wymagany dla logowania i mutacji zalogowanych; odrzucanie nieznanych pól JSON; limit rozmiaru żądania; `Cache-Control: no-store` i `X-Request-Id`; walidacja klucza przy starcie i brak sekretu w Git/obrazie; testy integracyjne błędów, walidacji, `413`/`415`, `429` i izolacji sesji; testy kryptografii potwierdzają odrzucenie zmienionego AAD (obcy właściciel), tagu i klucza bez ujawnienia plaintextu; `MessageIsolationIntegrationTests` (10) potwierdza brak plaintextu A w sesji B, `404` dla obcych zasobów, CSRF oraz odrzucenie payloadów SQL injection/XSS — raport w [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) |
 | R07 | Responsywność | Strona główna responsywna od 320 px; zrzuty ekranu Playwright przy 360, 768 i 1280 px w kolejnym zadaniu |
 | R08 | Dostępność | Semantyczne nagłówki, landmarki, skip link i widoczny focus; skan axe w kolejnym zadaniu |
 | R09 | Wydajność | Paginacja, indeks `(owner_id, created_at desc, id desc)`, limity; pomiary `hey` i `EXPLAIN ANALYZE` w `docs/PERFORMANCE.md` |
@@ -356,12 +356,13 @@ Konta są tworzone wyłącznie przy aktywnym profilu `local` (`application-local
 | Backend — jednostkowe i integracyjne | JUnit 5, Testcontainers | `cd backend && ./mvnw verify` |
 | Backend — mapowanie JPA i schemat | JUnit 5, Testcontainers PostgreSQL 16, Flyway | `PersistenceIntegrationTests` — 7 testów (migracje, powtarzalny start, UNIQUE, FK/cascade, długości, repozytoria, kursor) |
 | Backend — hashowanie i konta demo | JUnit 5, Spring Security, Testcontainers | 10 testów: Argon2id i długość hasha, normalizacja loginu, seed w `local`, idempotencja, brak seedu poza `local`, principal z `id` |
-| Backend — logowanie, sesja i CSRF | JUnit 5, MockMvc, Spring Security, Testcontainers | `AuthIntegrationTests` — 15 testów: CSRF, login, `/me`, logout, rotacja sesji i tokenu, `401` przed `403`, nierozróżnialne błędne dane, walidacja, `413`/`415`, `429`, nieznane ścieżki, `X-Request-Id` |
+| Backend — logowanie, sesja i CSRF | JUnit 5, MockMvc, Spring Security, Testcontainers | `AuthIntegrationTests` — 16 testów: CSRF, login, `/me`, logout, rotacja sesji i tokenu, `401` przed `403`, nierozróżnialne błędne dane, walidacja, `413`/`415`, `429`, nieznane ścieżki, `X-Request-Id` |
 | Backend — wygaśnięcie okna limitera | JUnit 5, MockMvc, Testcontainers, kontrolowany `Clock` | `AuthRateLimitWindowIntegrationTests` — 1 test: 5× `401`, 6. próba `429` z `Retry-After`, przesunięcie zegara o 61 s i ponowne logowanie `200` bez rzeczywistego czekania |
 | Backend — konfiguracja i walidacja klucza | JUnit 5, `ApplicationContextRunner`, `@TempDir` | `CryptoKeyTests` (10) + `CryptoKeyStartupTests` (5): poprawny klucz inline/plik, priorytet pliku, brak klucza, zły base64, 16/33 B, nieznany `keyId`, brak pliku, brak wycieku klucza w `toString`, blokada startu kontekstu |
 | Backend — AES-GCM i kodek pakietu | JUnit 5, AssertJ | `PackageCodecTests` (23) + `CryptoServiceTests` (26): wektor z `docs/API.md`, kanoniczny base64url, round-trip Unicode/emoji/spacji/nowych linii, 100 unikalnych nonce dla tego samego tekstu, tag i nonce z innego szyfrogramu, granice 40 000 B, zły AAD/klucz bez zwracania plaintextu |
-| Backend — HTTP crypto | JUnit 5, MockMvc, Testcontainers PostgreSQL 16 | `CryptoControllerIntegrationTests` (4): round-trip właściciela, 401 anonimowego klienta, `422 DECRYPT_FAILED` dla pakietu innego właściciela, `400 INVALID_PACKAGE_FORMAT`, limity DTO i `no-store` |
+| Backend — HTTP crypto | JUnit 5, MockMvc, Testcontainers PostgreSQL 16 | `CryptoControllerIntegrationTests` (5): round-trip właściciela, 401 anonimowego klienta, `422 DECRYPT_FAILED` dla pakietu innego właściciela, `400 INVALID_PACKAGE_FORMAT`, limity DTO i `no-store` |
 | Backend — HTTP messages | JUnit 5, MockMvc, Testcontainers PostgreSQL 16 | `MessageControllerIntegrationTests` (3): zapis tylko szyfrogramu, owner-scoped list/details/decrypt, stabilny kursor, max 50, anonimowy 401, identyczne 404 dla cudzej i brakującej wiadomości |
+| Backend — izolacja użytkowników i persystencja | JUnit 5, MockMvc, Testcontainers PostgreSQL 16 | `MessageIsolationIntegrationTests` (10): lista/szczegóły/decrypt A i B, wklejony obcy pakiet, sesja i CSRF, payloady SQL injection/XSS, faktyczne wiersze bazy i historia Flyway; raport [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) |
 | Backend — limiter i problem details | JUnit 5 | `LoginRateLimiterTests` (5), `AppUserPrincipalTests` (2), `ApiProblemFactoryTests` (2) |
 | Backend — format i higiena | Spotless, Enforcer | `cd backend && ./mvnw spotless:check verify` |
 | Schemat bazy i migracje | PostgreSQL 16, psql, Docker | `./scripts/validate-schema.sh` |
@@ -369,6 +370,32 @@ Konta są tworzone wyłącznie przy aktywnym profilu `local` (`application-local
 | Frontend — jednostkowe i komponentowe | Vitest, React Testing Library | `cd frontend && npm run test` |
 | Frontend — lint i format | ESLint, Prettier | `cd frontend && npm run lint && npm run format:check` |
 | Sekrety | `git grep`, `.gitignore` | `./scripts/check-secrets.sh` |
+
+Wynik ZR-16 (weryfikacja 2026-11-13; JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16.15):
+
+```text
+./mvnw -Dtest=MessageIsolationIntegrationTests test -> 10/10, BUILD SUCCESS
+./mvnw spotless:check verify                       -> 125/125, BUILD SUCCESS
+./scripts/check-secrets.sh                         -> OK, brak sekretów w trackowanych plikach
+node scripts/validate-api-contract.mjs             -> OK (28 przykładów JSON, 12 endpointów, wektor AES-GCM)
+git diff --check                                   -> OK
+kontrola mutacyjna (usunięty warunek owner w find) -> 8/10 testów FAIL; po przywróceniu 10/10
+```
+
+Scenariusze ZR-16:
+
+```text
+B: lista z ownerId=A / szczegóły idA / decrypt idA        -> pusta lista / 404 MESSAGE_NOT_FOUND / 404
+B: wklejony pakiet A do /api/crypto/decrypt (5 payloadów) -> 422 DECRYPT_FAILED, bez plaintextu i pakietu
+A: własny decrypt (zapisany i wklejony)                   -> 200, plaintext identyczny
+anonim: list/get/decrypt/encrypt                          -> 401 UNAUTHENTICATED (401 przed 403)
+B: decrypt/create bez CSRF lub z błędnym tokenem          -> 403 CSRF_INVALID
+B: SQL injection w id/limit/cursor, pole ownerId          -> 400 INVALID_MESSAGE_ID / VALIDATION_FAILED / INVALID_CURSOR
+baza: wiersze A i B                                       -> owner_id z sesji, nonce 12 B, tag 16 B, k1, AES-256-GCM
+baza: kolumny i historia Flyway                           -> brak plaintext/content/body; V1–V3 success
+```
+
+Pełny raport testów negatywnych: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md). Kod produkcyjny nie zmienił się w ZR-16.
 
 Wynik ZR-14 (weryfikacja 2026-11-08; JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16.15):
 

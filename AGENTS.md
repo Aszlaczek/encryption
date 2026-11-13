@@ -6,13 +6,13 @@ Ten plik jest automatycznie ładowany przez OpenCode. Zawiera skrót; szczegół
 
 Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: frontend React + Vite + TypeScript (UI po polsku), backend Spring Boot 4.1.2 / Java 17, PostgreSQL 16, uruchamiane przez Docker Compose. Hasła są hashowane Argon2id, a treść wiadomości szyfrowana po stronie serwera AES-256-GCM. Szczegóły wymagań: [`README.md`](README.md), kontrakt HTTP: [`docs/API.md`](docs/API.md).
 
-## Aktualny stan (2026-11-08)
+## Aktualny stan (2026-11-13)
 
-- Ostatni commit funkcjonalny: `a310d9e` (ZR-15); drzewo powinno być czyste.
-- Ukończone: ZR-01…ZR-15.
+- Ostatni commit funkcjonalny: ZR-16 (hash w commicie statusowym); drzewo powinno być czyste.
+- Ukończone: ZR-01…ZR-16.
 - Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`.
 - **Nie ma jeszcze** usuwania wiadomości, limitera crypto 60/30 na minutę oraz frontendu logowania. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
-- Testy: 115/115 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`).
+- Testy: 125/125 backendu (`./mvnw spotless:check verify`), 3 frontendu (`npm test`); raport izolacji A/B w [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md).
 
 ## Najpierw przeczytaj
 
@@ -22,6 +22,7 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 4. [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — schemat, mapowanie JPA, migracje, Argon2id.
 5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-17.
 6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q45 (rozstrzygnięte i otwarte).
+7. [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) — raport testów negatywnych ZR-16 (izolacja A/B, persystencja, kontrola mutacyjna).
 
 Gdy dokumenty się różnią, rozstrzyga `docs/API.md` dla HTTP i `docs/DATA_MODEL.md` dla bazy. Zmiana zachowania wymaga aktualizacji dokumentu i ADR w **tym samym commicie**.
 
@@ -131,4 +132,4 @@ docker compose exec -T db psql -U encryption -d encryption -c 'select username, 
 
 ## Następny krok
 
-Implementacja DTO, serwisu i endpointów `crypto` oraz `messages` z użyciem gotowych `CryptoService` i `PackageCodec`: szyfrowanie bez zapisu, deszyfrowanie wklejonego pakietu, CRUD wiadomości, owner scope, `404` dla obcych zasobów, paginacja kursorowa i limity szyfrowania/deszyfrowania. Po nich: frontend logowania, testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).
+Implementacja `DELETE /api/messages/{id}` (twarde usunięcie, `404` dla cudzej/nieistniejącej/powtórnej) oraz limiterów operacji crypto: 60/min szyfrowanie i 30/min deszyfrowanie, per użytkownik, oba endpointy danej operacji łącznie, z `429` i `Retry-After`. Potem frontend logowania, testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).

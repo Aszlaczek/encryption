@@ -2,11 +2,11 @@
 
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
-- **Ostatnia aktualizacja:** 2026-11-08
-- **Ostatni commit funkcjonalny:** `a310d9e` — walidacja, błędy i bezpieczne logi (ZR-15)
+- **Ostatnia aktualizacja:** 2026-11-13
+- **Ostatni commit funkcjonalny:** ZR-16 — testy izolacji użytkowników i persystencji (hash w commicie statusowym)
 - **Gałąź:** `main`, gotowa do push na `origin/main`
 - **Stan drzewa:** czysty po commicie
-- **Zadania ukończone:** ZR-01…ZR-15
+- **Zadania ukończone:** ZR-01…ZR-16
 - **Następne zadanie:** usuwanie wiadomości i limity operacji crypto 60/min i 30/min
 
 ## 1. Cel projektu
@@ -40,6 +40,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 - Błędy RFC 9457 z kodami `code`, `Cache-Control: no-store`, `X-Request-Id`, limit 65 536 B i `415` dla złego `Content-Type`; `Codepoints` mapuje się na `TOO_LONG`, a `Utf8Bytes` na `TOO_MANY_BYTES`, bez odbijania wartości wejściowej.
 - Compose z trzema zdrowymi kontenerami, nginx jako jedyny publiczny punkt wejścia.
 - `/actuator/health` zwraca `200`; anonimowe `/api/messages` zwraca `401`.
+- Izolacja dwóch użytkowników i persystencja pokryte `MessageIsolationIntegrationTests` (10 testów): lista, szczegóły, deszyfrowanie zapisanej wiadomości i wklejonego pakietu, sesja, CSRF, SQL injection oraz faktyczne wiersze PostgreSQL i historia Flyway; raport w `docs/TEST_REPORT.md`.
 
 ### Jeszcze nie istnieje
 
@@ -53,7 +54,7 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 
 | Warstwa | Liczba | Uruchomienie |
 |---|---:|---|
-| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 115 | `cd backend && ./mvnw spotless:check verify` |
+| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 125 | `cd backend && ./mvnw spotless:check verify` |
 | Frontend (Vitest + Testing Library) | 3 | `cd frontend && npm test` |
 | E2E | 0 | brak |
 
@@ -81,6 +82,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-13 | `7c10342` | 2026-11-08 | DTO i endpointy bezstanowego szyfrowania/deszyfrowania, sesyjny właściciel AAD, limity i mapowanie błędów domenowych na RFC 9457 | `./mvnw spotless:check verify` — 110/110; 4 scenariusze HTTP; walidator kontraktu i skan sekretów OK |
 | ZR-14 | `66fce7a` | 2026-11-08 | Transakcyjny zapis, lista z kursorem, szczegóły i deszyfrowanie zapisanych wiadomości z kontrolą owner scope | `./mvnw spotless:check verify` — 113/113; 3 scenariusze HTTP; skan sekretów, walidator kontraktu i diff check OK |
 | ZR-15 | `a310d9e` | 2026-11-08 | Stabilne kody Bean Validation dla punktów kodowych i bajtów UTF-8; testy granic hasła/tekstu, RFC 9457 i brak echo odrzuconych treści | `./mvnw spotless:check verify` — 115/115; `AuthIntegrationTests`, `CryptoControllerIntegrationTests`, `MessageControllerIntegrationTests` — 24/24; skan sekretów i walidator API OK |
+| ZR-16 | (hash w commicie statusowym) | 2026-11-13 | Testy izolacji A/B i persystencji: lista, szczegóły, decrypt zapisanej wiadomości i wklejonego pakietu, sesja, CSRF, SQL injection, faktyczne wiersze bazy i Flyway | `./mvnw -Dtest=MessageIsolationIntegrationTests test` — 10/10; `./mvnw spotless:check verify` — 125/125; kontrola mutacyjna 8/10 FAIL po usunięciu owner scope; raport `docs/TEST_REPORT.md` |
 
 ### ZR-01 — zakres i decyzje
 
@@ -332,6 +334,7 @@ git diff --check                                         -> OK
 │   ├── DATA_MODEL.md         # schemat, JPA, migracje
 │   ├── DECISIONS.md          # ADR-01, ADR-07…ADR-17
 │   ├── OPEN_QUESTIONS.md     # Q01…Q45
+│   ├── TEST_REPORT.md        # raport testów negatywnych ZR-16 (izolacja A/B, persystencja)
 │   └── PROJECT_MEMORY.md     # ten dokument
 ├── scripts/
 │   ├── check-secrets.sh
@@ -430,7 +433,7 @@ AAD:    v1:<ownerId>:<keyId>
 
 ## 8. Inwentarz testów
 
-### Backend — 115 testów
+### Backend — 125 testów
 
 | Klasa | Liczba | Co sprawdza |
 |---|---:|---|
@@ -443,6 +446,7 @@ AAD:    v1:<ownerId>:<keyId>
 | `CryptoServiceTests` | 26 | AES-GCM round-trip Unicode/emoji/spacji/nowych linii, świeże nonce (także 100× ten sam tekst), zły tag/nonce/AAD/klucz, wersja, Base64, granice 40 000 B |
 | `CryptoControllerIntegrationTests` | 5 | szyfrowanie/deszyfrowanie HTTP, sesja, CSRF, izolacja pakietów, granica 40 000 B i brak echo błędnej treści |
 | `MessageControllerIntegrationTests` | 3 | zapis bez plaintextu, owner scope, szczegóły/decrypt, paginacja kursorowa, 404, auth i CSRF |
+| `MessageIsolationIntegrationTests` | 10 | izolacja A/B na liście, szczegółach, decrypt zapisanej wiadomości i wklejonego pakietu (5 payloadów), sesja i CSRF, SQL injection/XSS, faktyczne wiersze PostgreSQL, koperty i historia Flyway |
 | `DemoUserSeedingIntegrationTests` | 4 | dwa konta z hashami Argon2id, dopasowanie haseł, idempotencja bez nadpisywania, brak plaintextu w bazie, principal z `id` |
 | `LoginRateLimiterTests` | 5 | blokada szóstej próby, okno 60 s, reset po sukcesie, niezależność kluczy IP/login, starzenie wpisów |
 | `UsernameNormalizerTests` | 3 | trim/lowercase, puste dane, `null` |
@@ -542,7 +546,7 @@ Kolejność rekomendowana:
 2. ~~**Walidacja i błędy**~~ — wykonane w ZR-08 dla auth i transportu; kolejne DTO dołączą własne walidatory.
 3. ~~**Konfiguracja i trwałość klucza**~~ — wykonane w ZR-10: generacja, sekret Compose tylko w backendzie, walidacja startowa, ADR-15.
 4. ~~**Kryptografia**~~ — wykonane w ZR-11 i pokryte testami jednostkowymi w ZR-12: `CryptoService` AES-256-GCM, `PackageCodec`, format pakietu, AAD, walidacja nonce/tag/długości, wektory z `docs/API.md`.
-5. ~~**Zapis, lista i odczyt wiadomości**~~ — wykonane w ZR-14; pozostaje endpoint usuwania oraz limity operacji crypto 60/min i 30/min.
+5. ~~**Zapis, lista i odczyt wiadomości**~~ — wykonane w ZR-14; izolacja A/B i persystencja pokryte testami w ZR-16. Pozostaje endpoint usuwania oraz limity operacji crypto 60/min i 30/min.
 6. **Frontend** — formularz logowania, obsługa CSRF, lista i edytor wiadomości, stany błędów, testy komponentów.
 7. **E2E** — Playwright: logowanie, izolacja użytkowników, CRUD, wylogowanie, błędy walidacji.
 8. **CI i wydajność** — workflow GitHub Actions, `docs/PERFORMANCE.md`, testy obciążeniowe i analiza pamięci Argon2id.
@@ -550,7 +554,7 @@ Kolejność rekomendowana:
 Warunki wejścia do kolejnego zadania:
 
 - drzewo czyste i `main == origin/main`,
-- 115/115 testów backendu i 3/3 frontendu,
+- 125/125 testów backendu i 3/3 frontendu,
 - Compose z trzema zdrowymi kontenerami,
 - dokumentacja i ADR zaktualizowane w tym samym commicie,
 - wpis do Notion z rzeczywistym hashem commita i wynikami komend.
