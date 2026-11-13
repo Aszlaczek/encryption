@@ -3,9 +3,9 @@
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
 - **Ostatnia aktualizacja:** 2026-11-13
-- **Ostatni commit funkcjonalny:** `26fda0d` — formularze szyfrowania i deszyfrowania (ZR-18); ZR-19 w trakcie zamykania
-- **Gałąź:** `main`, gotowa do push na `origin/main` po commicie ZR-19
-- **Stan drzewa:** zmiany ZR-19 przed commitem
+- **Ostatni commit funkcjonalny:** `bd0da9b` — lista zapisanych wiadomości (ZR-19)
+- **Gałąź:** `main`, gotowa do push na `origin/main`
+- **Stan drzewa:** czysty po commicie
 - **Zadania ukończone:** ZR-01…ZR-19
 - **Następne zadanie:** `DELETE /api/messages/{id}` i UI usuwania; opcjonalnie limitery crypto 60/30
 
@@ -87,7 +87,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-16 | `d960326` | 2026-11-13 | Testy izolacji A/B i persystencji: lista, szczegóły, decrypt zapisanej wiadomości i wklejonego pakietu, sesja, CSRF, SQL injection, faktyczne wiersze bazy i Flyway | `./mvnw -Dtest=MessageIsolationIntegrationTests test` — 10/10; `./mvnw spotless:check verify` — 125/125; kontrola mutacyjna 8/10 FAIL po usunięciu owner scope; raport `docs/TEST_REPORT.md` |
 | ZR-17 | `c51a319` | 2026-11-13 | Wspólny klient HTTP z CSRF i RFC 9457; sesja `/me` z 401 = anonim; dostępny formularz logowania, mapowanie błędów, wylogowanie; brak storage; proxy dev | `npm run lint`, `format:check`, `npm test` — 26/26, `npm run build`; Compose 3 healthy; smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
 | ZR-18 | `26fda0d` | 2026-11-13 | Formularze szyfrowania i deszyfrowania: liczniki code point/UTF-8, osobne „Szyfruj” i „Szyfruj i zapisz”, wklejanie i kopiowanie pakietu oraz treści, mapowanie błędów, 401 kończący sesję, tekst bez `innerHTML` | `npm run lint`, `format:check`, `npm test` — 71/71, `npm run build`; Compose 3 healthy; smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
-| ZR-19 | `__ZR19_COMMIT__` | 2026-11-13 | Lista zapisanych wiadomości: paginacja kursorem, stany ładowania/pustki/błędu, retry tego samego kursora, deduplikacja, podgląd pakietu i deszyfrowanie tylko po kliknięciu, kopiowanie, tekst bez `innerHTML`, czyszczenie po wylogowaniu | `npm run lint`, `format:check`, `npm test` — 106/106, `npm run build`; Compose 3 healthy; curl (izolacja, kursor, `404`, `INVALID_CURSOR`, limit) i smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
+| ZR-19 | `bd0da9b` | 2026-11-13 | Lista zapisanych wiadomości: paginacja kursorem, stany ładowania/pustki/błędu, retry tego samego kursora, deduplikacja, podgląd pakietu i deszyfrowanie tylko po kliknięciu, kopiowanie, tekst bez `innerHTML`, czyszczenie po wylogowaniu | `npm run lint`, `format:check`, `npm test` — 106/106, `npm run build`; Compose 3 healthy; curl (izolacja, kursor, `404`, `INVALID_CURSOR`, limit) i smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
 
 ### ZR-01 — zakres i decyzje
 

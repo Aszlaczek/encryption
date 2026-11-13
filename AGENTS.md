@@ -8,7 +8,7 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-13)
 
-- Ostatni commit funkcjonalny: `26fda0d` (ZR-18 — formularze szyfrowania i deszyfrowania); ZR-19 jest w trakcie zamykania, drzewo zawiera zmiany przed commitem.
+- Ostatni commit funkcjonalny: `bd0da9b` (ZR-19 — lista własnych wiadomości); drzewo powinno być czyste.
 - Ukończone: ZR-01…ZR-19.
 - Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem; formularze szyfrowania/deszyfrowania z licznikami, kopiowaniem, rozdziałem „Szyfruj”/„Szyfruj i zapisz”, mapowaniem błędów i renderowaniem treści wyłącznie jako tekst; lista zapisanych wiadomości z paginacją kursorem, stanami ładowania/pustki/błędu, podglądem pakietu i deszyfrowaniem dopiero po kliknięciu.
 - **Nie ma jeszcze** usuwania wiadomości ani UI usuwania, limitera crypto 60/30 na minutę. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
