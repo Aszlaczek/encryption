@@ -3,7 +3,7 @@
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
 - **Ostatnia aktualizacja:** 2026-11-13
-- **Ostatni commit funkcjonalny:** ZR-16 — testy izolacji użytkowników i persystencji (hash w commicie statusowym)
+- **Ostatni commit funkcjonalny:** `d960326` — testy izolacji użytkowników i persystencji (ZR-16)
 - **Gałąź:** `main`, gotowa do push na `origin/main`
 - **Stan drzewa:** czysty po commicie
 - **Zadania ukończone:** ZR-01…ZR-16
@@ -82,7 +82,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-13 | `7c10342` | 2026-11-08 | DTO i endpointy bezstanowego szyfrowania/deszyfrowania, sesyjny właściciel AAD, limity i mapowanie błędów domenowych na RFC 9457 | `./mvnw spotless:check verify` — 110/110; 4 scenariusze HTTP; walidator kontraktu i skan sekretów OK |
 | ZR-14 | `66fce7a` | 2026-11-08 | Transakcyjny zapis, lista z kursorem, szczegóły i deszyfrowanie zapisanych wiadomości z kontrolą owner scope | `./mvnw spotless:check verify` — 113/113; 3 scenariusze HTTP; skan sekretów, walidator kontraktu i diff check OK |
 | ZR-15 | `a310d9e` | 2026-11-08 | Stabilne kody Bean Validation dla punktów kodowych i bajtów UTF-8; testy granic hasła/tekstu, RFC 9457 i brak echo odrzuconych treści | `./mvnw spotless:check verify` — 115/115; `AuthIntegrationTests`, `CryptoControllerIntegrationTests`, `MessageControllerIntegrationTests` — 24/24; skan sekretów i walidator API OK |
-| ZR-16 | (hash w commicie statusowym) | 2026-11-13 | Testy izolacji A/B i persystencji: lista, szczegóły, decrypt zapisanej wiadomości i wklejonego pakietu, sesja, CSRF, SQL injection, faktyczne wiersze bazy i Flyway | `./mvnw -Dtest=MessageIsolationIntegrationTests test` — 10/10; `./mvnw spotless:check verify` — 125/125; kontrola mutacyjna 8/10 FAIL po usunięciu owner scope; raport `docs/TEST_REPORT.md` |
+| ZR-16 | `d960326` | 2026-11-13 | Testy izolacji A/B i persystencji: lista, szczegóły, decrypt zapisanej wiadomości i wklejonego pakietu, sesja, CSRF, SQL injection, faktyczne wiersze bazy i Flyway | `./mvnw -Dtest=MessageIsolationIntegrationTests test` — 10/10; `./mvnw spotless:check verify` — 125/125; kontrola mutacyjna 8/10 FAIL po usunięciu owner scope; raport `docs/TEST_REPORT.md` |
 
 ### ZR-01 — zakres i decyzje
 

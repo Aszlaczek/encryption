@@ -8,7 +8,7 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-13)
 
-- Ostatni commit funkcjonalny: ZR-16 (hash w commicie statusowym); drzewo powinno być czyste.
+- Ostatni commit funkcjonalny: `d960326` (ZR-16); drzewo powinno być czyste.
 - Ukończone: ZR-01…ZR-16.
 - Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`.
 - **Nie ma jeszcze** usuwania wiadomości, limitera crypto 60/30 na minutę oraz frontendu logowania. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.

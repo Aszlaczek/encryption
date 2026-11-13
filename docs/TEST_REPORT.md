@@ -4,7 +4,7 @@
 - **Zadanie:** ZR-16 — izolacja dwóch użytkowników i persystencja
 - **Wymagania:** R02, R04, R06
 - **Zależności potwierdzone:** ZR-09 (`a372022`), ZR-13 (`7c10342`), ZR-14 (`66fce7a`), ZR-15 (`a310d9e`)
-- **Commit funkcjonalny:** uzupełniany w commicie statusowym (`git log --grep ZR-16`)
+- **Commit funkcjonalny:** `d960326`
 - **Klasa testowa:** `backend/src/test/java/com/szlaczek/backend/message/api/MessageIsolationIntegrationTests.java`
 
 ## 1. Środowisko
