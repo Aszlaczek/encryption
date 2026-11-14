@@ -4,7 +4,7 @@
 - **Zadania:** ZR-16 — izolacja dwóch użytkowników i persystencja; ZR-20 — usuwanie własnych wiadomości
 - **Wymagania:** R02, R04, R06
 - **Zależności potwierdzone:** ZR-09 (`a372022`), ZR-13 (`7c10342`), ZR-14 (`66fce7a`), ZR-15 (`a310d9e`); dla ZR-20 dodatkowo ZR-19 (`bd0da9b`)
-- **Commit funkcjonalny:** ZR-16 `d960326`; ZR-20 w tym samym commicie co ten raport
+- **Commit funkcjonalny:** ZR-16 `d960326`; ZR-20 `449e97b`
 - **Klasy testowe:** `MessageIsolationIntegrationTests` (ZR-16, 11 testów po ZR-20), `MessageControllerIntegrationTests` (ZR-20, 5 testów)
 
 ## 1. Środowisko

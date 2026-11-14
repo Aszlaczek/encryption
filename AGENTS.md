@@ -6,10 +6,10 @@ Ten plik jest automatycznie ładowany przez OpenCode. Zawiera skrót; szczegół
 
 Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: frontend React + Vite + TypeScript (UI po polsku), backend Spring Boot 4.1.2 / Java 17, PostgreSQL 16, uruchamiane przez Docker Compose. Hasła są hashowane Argon2id, a treść wiadomości szyfrowana po stronie serwera AES-256-GCM. Szczegóły wymagań: [`README.md`](README.md), kontrakt HTTP: [`docs/API.md`](docs/API.md).
 
-## Aktualny stan (2026-11-13)
+## Aktualny stan (2026-11-14)
 
-- Ostatni commit funkcjonalny: `bd0da9b` (ZR-19 — lista własnych wiadomości); ZR-20 (usuwanie) jest zaimplementowany i czeka na commit.
-- Ukończone: ZR-01…ZR-19, ZR-20 w trakcie domknięcia.
+- Ostatni commit funkcjonalny: `449e97b` (ZR-20 — usuwanie własnych wiadomości); drzewo powinno być czyste.
+- Ukończone: ZR-01…ZR-20.
 - Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, `DELETE /api/messages/{id}`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem; formularze szyfrowania/deszyfrowania z licznikami, kopiowaniem i rozdziałem „Szyfruj”/„Szyfruj i zapisz”; lista zapisanych wiadomości z paginacją kursorem, podglądem pakietu i deszyfrowaniem dopiero po kliknięciu; usuwanie z potwierdzeniem inline, `404` jako „już usunięta” i auto-dociąganiem strony.
 - **Nie ma jeszcze** limitera crypto 60/30 na minutę. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
 - Testy: 128/128 backendu (`./mvnw spotless:check verify`), 120/120 frontendu (`npm test`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md).
@@ -20,10 +20,10 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 2. [`README.md`](README.md) — status, uruchomienie, dowody R01–R10.
 3. [`docs/API.md`](docs/API.md) — **kanoniczny** kontrakt HTTP, DTO, błędy, format pakietu, kursor.
 4. [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — schemat, mapowanie JPA, migracje, Argon2id.
-5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-20.
-6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q47 (rozstrzygnięte i otwarte).
-7. [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) — raport testów negatywnych ZR-16 (izolacja A/B, persystencja, kontrola mutacyjna).
-8. [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) — testy klienta, logowania, sesji i formularzy crypto oraz smoke Playwright ZR-17/ZR-18.
+5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-22.
+6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q49 (rozstrzygnięte i otwarte).
+7. [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) — raport testów negatywnych ZR-16 i ZR-20 (izolacja A/B, usuwanie, persystencja, kontrola mutacyjna).
+8. [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) — testy klienta, logowania, sesji, formularzy crypto, listy i usuwania oraz smoke Playwright ZR-17…ZR-20.
 
 Gdy dokumenty się różnią, rozstrzyga `docs/API.md` dla HTTP i `docs/DATA_MODEL.md` dla bazy. Zmiana zachowania wymaga aktualizacji dokumentu i ADR w **tym samym commicie**.
 

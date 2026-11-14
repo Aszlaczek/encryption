@@ -3,10 +3,10 @@
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
 - **Ostatnia aktualizacja:** 2026-11-14
-- **Ostatni commit funkcjonalny:** `bd0da9b` — lista zapisanych wiadomości (ZR-19); ZR-20 (usuwanie) w toku przed commitem
+- **Ostatni commit funkcjonalny:** `449e97b` — usuwanie własnych wiadomości (ZR-20)
 - **Gałąź:** `main`, gotowa do push na `origin/main`
-- **Stan drzewa:** zmiany ZR-20 przed commitem
-- **Zadania ukończone:** ZR-01…ZR-19, ZR-20 w trakcie domknięcia
+- **Stan drzewa:** czysty po commicie
+- **Zadania ukończone:** ZR-01…ZR-20
 - **Następne zadanie:** limitery crypto 60/min i 30/min; potem formalne E2E, CI i `docs/PERFORMANCE.md`
 
 ## 1. Cel projektu
@@ -88,7 +88,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-17 | `c51a319` | 2026-11-13 | Wspólny klient HTTP z CSRF i RFC 9457; sesja `/me` z 401 = anonim; dostępny formularz logowania, mapowanie błędów, wylogowanie; brak storage; proxy dev | `npm run lint`, `format:check`, `npm test` — 26/26, `npm run build`; Compose 3 healthy; smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
 | ZR-18 | `26fda0d` | 2026-11-13 | Formularze szyfrowania i deszyfrowania: liczniki code point/UTF-8, osobne „Szyfruj” i „Szyfruj i zapisz”, wklejanie i kopiowanie pakietu oraz treści, mapowanie błędów, 401 kończący sesję, tekst bez `innerHTML` | `npm run lint`, `format:check`, `npm test` — 71/71, `npm run build`; Compose 3 healthy; smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
 | ZR-19 | `bd0da9b` | 2026-11-13 | Lista zapisanych wiadomości: paginacja kursorem, stany ładowania/pustki/błędu, retry tego samego kursora, deduplikacja, podgląd pakietu i deszyfrowanie tylko po kliknięciu, kopiowanie, tekst bez `innerHTML`, czyszczenie po wylogowaniu | `npm run lint`, `format:check`, `npm test` — 106/106, `npm run build`; Compose 3 healthy; curl (izolacja, kursor, `404`, `INVALID_CURSOR`, limit) i smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
-| ZR-20 | (commit ZR-20) | 2026-11-14 | Usuwanie własnych wiadomości: `DELETE /api/messages/{id}` z owner scope i `204`, identyczne `404` dla cudzej/nieistniejącej, potwierdzenie inline, `404` jako „już usunięta”, auto-dociągnięcie strony, brak resetu kursora, treść znika z DOM | `./mvnw spotless:check verify` — 128/128; `npm run lint`, `format:check`, `npm test` — 120/120, `npm run build`; Compose 3 healthy; curl `204`/`404`/`400`/`403`/`401`, psql 0/1; smoke Playwright 21/21 PASS; raporty `docs/TEST_REPORT.md` i `docs/TEST_REPORT_FRONTEND.md` |
+| ZR-20 | `449e97b` | 2026-11-14 | Usuwanie własnych wiadomości: `DELETE /api/messages/{id}` z owner scope i `204`, identyczne `404` dla cudzej/nieistniejącej, potwierdzenie inline, `404` jako „już usunięta”, auto-dociągnięcie strony, brak resetu kursora, treść znika z DOM | `./mvnw spotless:check verify` — 128/128; `npm run lint`, `format:check`, `npm test` — 120/120, `npm run build`; Compose 3 healthy; curl `204`/`404`/`400`/`403`/`401`, psql 0/1; smoke Playwright 21/21 PASS; raporty `docs/TEST_REPORT.md` i `docs/TEST_REPORT_FRONTEND.md` |
 
 ### ZR-01 — zakres i decyzje
 
