@@ -16,6 +16,17 @@ const CSRF_MESSAGE =
 const SERVER_MESSAGE = 'Wystąpił błąd serwera. Spróbuj ponownie.';
 
 /**
+ * A missing message is not an error for deletion: the desired end state is already reached.
+ * Other actions still show a local explanation and keep the loaded data.
+ */
+export function isMissingMessage(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.status === 404 || (error.status === 400 && error.code === 'INVALID_MESSAGE_ID'))
+  );
+}
+
+/**
  * Maps list, detail and decrypt failures onto the UI. A 401 always ends the session; every
  * other failure stays local to the list or the item so loaded data is not discarded.
  */
@@ -28,7 +39,7 @@ export function describeMessageError(error: unknown): MessageFailure {
     return { kind: 'session', message: SESSION_MESSAGE };
   }
 
-  if (error.status === 404 || (error.status === 400 && error.code === 'INVALID_MESSAGE_ID')) {
+  if (isMissingMessage(error)) {
     return { kind: 'form', message: NOT_FOUND_MESSAGE };
   }
 

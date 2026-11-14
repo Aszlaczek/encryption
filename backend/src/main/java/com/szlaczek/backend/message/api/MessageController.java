@@ -10,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -57,6 +58,13 @@ public class MessageController {
     public PlaintextMessageResponse decrypt(
             @PathVariable String id, @AuthenticationPrincipal AppUserPrincipal principal) {
         return new PlaintextMessageResponse(messageService.decrypt(parseId(id), principal.getId()));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+            @PathVariable String id, @AuthenticationPrincipal AppUserPrincipal principal) {
+        messageService.delete(parseId(id), principal.getId());
+        return ResponseEntity.noContent().build();
     }
 
     private static UUID parseId(String value) {

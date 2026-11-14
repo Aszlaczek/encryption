@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetCsrfToken } from '../../shared/api';
 import { clearCsrfCookie, mockResponse, setCsrfCookie } from '../../test/http';
-import { decryptMessage, getMessage, listMessages } from './api';
+import { decryptMessage, deleteMessage, getMessage, listMessages } from './api';
 
 const fetchMock = vi.fn();
 
@@ -92,6 +92,29 @@ describe('messages api', () => {
     expect(headers['X-XSRF-TOKEN']).toBe('csrf-token');
   });
 
+  it('deletes one message with DELETE, no body and a CSRF header', async () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    fetchMock.mockResolvedValueOnce(mockResponse({ status: 204 }));
+
+    await expect(deleteMessage(id)).resolves.toBeUndefined();
+
+    const { path, init, headers } = lastRequest();
+    expect(path).toBe(`/api/messages/${id}`);
+    expect(init.method).toBe('DELETE');
+    expect(init.body).toBeUndefined();
+    expect(init.cache).toBe('no-store');
+    expect(headers['Content-Type']).toBeUndefined();
+    expect(headers['X-XSRF-TOKEN']).toBe('csrf-token');
+  });
+
+  it('encodes the id in the delete path', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ status: 204 }));
+
+    await deleteMessage('a/b?c');
+
+    expect(lastRequest().path).toBe('/api/messages/a%2Fb%3Fc');
+  });
+
   it('never sends an owner identifier in the path or query', async () => {
     fetchMock
       .mockResolvedValueOnce(
@@ -100,11 +123,13 @@ describe('messages api', () => {
       .mockResolvedValueOnce(
         mockResponse({ body: { id: 'm1', createdAt: '2026-11-13T10:15:00Z', package: 'v1.a' } }),
       )
-      .mockResolvedValueOnce(mockResponse({ body: { plaintext: 'x' } }));
+      .mockResolvedValueOnce(mockResponse({ body: { plaintext: 'x' } }))
+      .mockResolvedValueOnce(mockResponse({ status: 204 }));
 
     await listMessages();
     await getMessage('m1');
     await decryptMessage('m1');
+    await deleteMessage('m1');
 
     for (const [path, init] of fetchMock.mock.calls as [string, RequestInit][]) {
       expect(path).not.toContain('owner');

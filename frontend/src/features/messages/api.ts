@@ -53,3 +53,8 @@ export function decryptMessage(id: string): Promise<DecryptedMessage> {
     method: 'POST',
   });
 }
+
+/** Deletes one saved message; the endpoint returns 204 and takes no body. */
+export function deleteMessage(id: string): Promise<void> {
+  return apiRequest<void>(`/api/messages/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}

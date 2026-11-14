@@ -1,6 +1,7 @@
 package com.szlaczek.backend.message.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -271,6 +272,61 @@ class MessageIsolationIntegrationTests {
                 .andExpect(jsonPath("$.code").value("MESSAGE_NOT_FOUND"))
                 .andReturn();
         assertNoSecret(foreignWithCsrf, secret);
+    }
+
+    @Test
+    void deleteNeverTouchesAnotherUsersMessage() throws Exception {
+        Session alice = login("alice", "AliceDemo123!");
+        Session bob = login("bob", "BobDemo1234!");
+        String firstSecret = "pierwszy sekret Alicji do usunięcia";
+        String secondSecret = "drugi sekret Alicji pozostaje";
+        String bobSecret = "sekret Boba pozostaje";
+        String firstId = json(create(alice, firstSecret).andReturn(), "$.id");
+        String secondId = json(create(alice, secondSecret).andReturn(), "$.id");
+        String bobId = json(create(bob, bobSecret).andReturn(), "$.id");
+
+        MvcResult foreign = mockMvc.perform(delete("/api/messages/" + firstId)
+                .session(bob.session())
+                .cookie(bob.xsrfCookie())
+                .header("X-XSRF-TOKEN", bob.token()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("MESSAGE_NOT_FOUND"))
+                .andExpect(jsonPath("$.package").doesNotExist())
+                .andExpect(jsonPath("$.plaintext").doesNotExist())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andReturn();
+        assertNoSecret(foreign, firstSecret);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from messages", Integer.class))
+                .isEqualTo(3);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from messages where id = ?::uuid", Integer.class, firstId))
+                .isEqualTo(1);
+
+        mockMvc.perform(delete("/api/messages/" + firstId)
+                .session(alice.session())
+                .cookie(alice.xsrfCookie())
+                .header("X-XSRF-TOKEN", alice.token()))
+                .andExpect(status().isNoContent());
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from messages where id = ?::uuid", Integer.class, firstId))
+                .isZero();
+        assertThat(jdbcTemplate.queryForList("select id::text from messages", String.class))
+                .containsExactlyInAnyOrder(secondId, bobId);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from messages where owner_id = ?::uuid", Integer.class, userId(alice)))
+                .isEqualTo(1);
+
+        mockMvc.perform(get("/api/messages/" + firstId).session(alice.session()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("MESSAGE_NOT_FOUND"));
+        mockMvc.perform(get("/api/messages").session(alice.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(secondId));
+        mockMvc.perform(get("/api/messages").session(bob.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(bobId));
     }
 
     @Test

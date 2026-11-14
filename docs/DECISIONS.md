@@ -806,6 +806,36 @@ R01, R04, R09.
 
 ---
 
+## ADR-22 — Usuwanie własnych wiadomości
+
+### Status
+
+**Accepted — 2026-11-14 (ZR-20).**
+
+### Decyzja
+
+1. Usuwanie jest twarde: `DELETE /api/messages/{id}` usuwa wiersz z tabeli `messages`. Nie ma kosza, miękkiego usuwania ani nowej kolumny; schemat i migracje `V1`–`V3` pozostają bez zmian.
+2. Owner scope wynika wyłącznie z sesji. `MessageService.delete(id, ownerId)` wywołuje `deleteByIdAndOwner_Id` i traktuje `0` usuniętych wierszy jako `MessageNotFoundException`, więc cudza i nieistniejąca wiadomość dają identyczne `404 MESSAGE_NOT_FOUND`. Świadomie nie wykonujemy `find` + `delete`, żeby uniknąć dodatkowego `SELECT` i wyścigu między odczytem a usunięciem.
+3. Sukces to `204 No Content` z pustym ciałem i `Cache-Control: no-store`. `DELETE` nie wymaga `Content-Type`, bo filtr transportowy egzekwuje JSON wyłącznie dla `POST`/`PUT`/`PATCH`. CSRF jest wymagany dla zalogowanej mutacji, a anonimowe żądanie dostaje `401` przed `403`.
+4. UI używa potwierdzenia w miejscu (inline), a nie `window.confirm`: przycisk „Usuń” rozwija `role="group"` z ostrzeżeniem o trwałości i przyciskami „Tak, usuń”/„Anuluj”. Fokus przenosi się na „Tak, usuń”. Podczas żądania wszystkie akcje pozycji są zablokowane, a `role="status"` ogłasza „Trwa usuwanie wiadomości…”.
+5. `404` i `INVALID_MESSAGE_ID` podczas usuwania są traktowane jako osiągnięty cel: pozycja znika z listy, a panel pokazuje `role="status"` „Wiadomość była już usunięta.”. Inne błędy zostawiają pozycję i pokazują alert z fokusem; `401` kończy sesję przez `onSessionExpired`, bez importu `features/auth` w module wiadomości.
+6. Usunięcie nie resetuje kursora. Kursor wskazuje `(createdAt, id)` ostatniej wczytanej pozycji, więc usunięcie wiersza nie powoduje pominięcia ani duplikatu. Gdy znika ostatnia widoczna pozycja, a `hasMore` jest `true`, panel dociąga kolejną stronę tym samym kursorem; pustka jest pokazywana tylko wtedy, gdy nie ma już danych po obu stronach.
+7. Usunięcie wiersza nie unieważnia skopiowanego wcześniej pakietu. Klucz AES i `ownerId` w AAD pozostają bez zmian, więc kopia pakietu nadal daje się odszyfrować na tym samym koncie. MVP nie ma odwoływania kopii; użytkownik musi wiedzieć, że usunięcie czyści bazę, a nie wszystkie wcześniejsze kopie.
+
+### Konsekwencje
+
+- Użytkownik może trwale usunąć własną wiadomość, a cudza pozostaje nietknięta i nierozróżnialna od nieistniejącej.
+- Brak migracji i zmian schematu; `deleteByIdAndOwner_Id` z ZR-06 jest teraz używane.
+- Po usunięciu cała treść znika z DOM razem z pozycją, a storage pozostaje pusty.
+- Auto-dociągnięcie strony przy pustej liście to jedno dodatkowe żądanie wywołane akcją użytkownika, nie prefetch treści.
+- Skopiowane pakiety pozostają ważne; pełne unieważnienie wymagałoby rotacji klucza lub osobnego mechanizmu odwoływania, czego MVP nie obejmuje.
+
+### Powiązane wymagania
+
+R01, R04, R06, R09.
+
+---
+
 ## Zasady zmian decyzji
 
 - Zmiana zaakceptowanej decyzji wymaga nowego wpisu lub wyraźnego oznaczenia poprzedniego jako `Superseded`.

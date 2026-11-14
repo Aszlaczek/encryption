@@ -72,6 +72,13 @@ public class MessageService {
         return response(find(id, ownerId));
     }
 
+    @Transactional
+    public void delete(UUID id, UUID ownerId) {
+        if (messageRepository.deleteByIdAndOwner_Id(id, ownerId) == 0) {
+            throw new MessageNotFoundException(id);
+        }
+    }
+
     @Transactional(readOnly = true)
     public String decrypt(UUID id, UUID ownerId) {
         Message message = find(id, ownerId);

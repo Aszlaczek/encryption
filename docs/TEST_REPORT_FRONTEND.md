@@ -1,14 +1,16 @@
-# Raport testów frontendu — klient API, logowanie, sesja, formularze crypto i lista wiadomości (ZR-17/ZR-18/ZR-19)
+# Raport testów frontendu — klient API, logowanie, sesja, formularze crypto, lista i usuwanie wiadomości (ZR-17/ZR-18/ZR-19/ZR-20)
 
-- **Data:** 2026-11-13
-- **Zadania:** ZR-17 — klient API i logowanie; ZR-18 — formularze szyfrowania i deszyfrowania; ZR-19 — lista zapisanych wiadomości
-- **Wymagania:** R01, R02, R03, R04, R08, R09
+- **Data:** 2026-11-13 (ZR-17…ZR-19), 2026-11-14 (ZR-20)
+- **Zadania:** ZR-17 — klient API i logowanie; ZR-18 — formularze szyfrowania i deszyfrowania; ZR-19 — lista zapisanych wiadomości; ZR-20 — usuwanie zapisanych wiadomości
+- **Wymagania:** R01, R02, R03, R04, R06, R08, R09
 - **Zależności ZR-18 potwierdzone:** ZR-13 (`7c10342`), ZR-14 (`66fce7a`), ZR-17 (`c51a319`)
 - **Zależności ZR-19 potwierdzone:** ZR-14 (`66fce7a`), ZR-17 (`c51a319`); baseline `9e9144b`
-- **Commit funkcjonalny ZR-17:** `c51a319`; ZR-18: `26fda0d`; ZR-19: `bd0da9b`
+- **Zależności ZR-20 potwierdzone:** ZR-19 (`bd0da9b`)
+- **Commit funkcjonalny ZR-17:** `c51a319`; ZR-18: `26fda0d`; ZR-19: `bd0da9b`; ZR-20 w tym samym commicie co ten raport
 - **Zakres kodu ZR-17:** `frontend/src/shared/api/`, `frontend/src/features/auth/`, `frontend/src/app/App.tsx`, `frontend/vite.config.ts`, `frontend/src/styles/global.css`
 - **Zakres kodu ZR-18:** `frontend/src/features/crypto/`, `frontend/src/shared/ui/CopyButton.tsx`, `frontend/src/features/auth/` (`expireSession`), `frontend/src/app/App.tsx`, `frontend/src/styles/global.css`
 - **Zakres kodu ZR-19:** `frontend/src/features/messages/`, `frontend/src/shared/format.ts`, `frontend/src/features/crypto/` (importy formattera), `frontend/src/app/App.tsx`, `frontend/src/test/backend.ts`, `frontend/src/styles/global.css`
+- **Zakres kodu ZR-20:** `frontend/src/features/messages/` (`api.ts`, `errors.ts`, `MessageListItem.tsx`, `MessagesPanel.tsx` i testy), `frontend/src/styles/global.css`
 
 ## 1. Środowisko
 
@@ -315,3 +317,93 @@ Konsola przeglądarki nie zgłosiła błędów strony (`pageerror` puste); odnot
 | Data | Zmiana | Uzasadnienie | Problem i rozwiązanie | Testy | Następny krok |
 |---|---|---|---|---|---|
 | 2026-11-13 | Dodano `features/messages` (API, mapowanie błędów, panel, element listy), `shared/format.ts`, style listy i wyników, router `fetch` w testach; zaktualizowano `App`, `App.test.tsx` i `AuthProvider.test.tsx`. | Realizacja R01, R04, R09: lista tylko własnych wiadomości, paginacja z obsługą błędów, podgląd pakietu i deszyfrowanie na żądanie, brak masowego plaintextu i czyszczenie po wylogowaniu. | (1) `App` przekazywał nową funkcję `expireSession` przy każdym renderze, co restartowało pierwsze pobranie — callback trafił do `useRef`. (2) Kolejka `mockResolvedValueOnce` przesuwała się po dodaniu żądania listy — testy integracyjne dostały router po ścieżce. (3) `userEvent.setup()` nadpisywał clipboard — stub ustawiany jest po `setup()`. (4) Przycisk „Pobierz więcej” zmienia tekst na „Pobieranie…”, więc smoke czeka na „To wszystkie zapisane wiadomości.” zamiast na odmontowanie przycisku. | `npm run lint`, `format:check`, `npm test` 106/106, `npm run build`; curl i smoke Playwright PASS; `check-secrets` i `git diff --check` OK. | `DELETE /api/messages/{id}` i UI usuwania, potem limitery crypto, formalne E2E i CI. |
+
+---
+
+## 11. ZR-20 — usuwanie zapisanych wiadomości
+
+### 11.1 Komendy i wyniki
+
+Weryfikacja 2026-11-14; Node.js 22.19.0, npm 11.16.0, Playwright 1.64.1 + Google Chrome 157, Docker Compose, PostgreSQL 16.15.
+
+```text
+cd frontend && npm run lint          -> OK (0 błędów, 0 ostrzeżeń)
+cd frontend && npm run format:check  -> All matched files use Prettier code style!
+cd frontend && npm test              -> 15 plików, 120/120 testów, PASS
+cd frontend && npm run build         -> tsc -b + vite build; JS 250.70 kB (gzip 77.08 kB), CSS 6.91 kB
+docker compose up -d --build         -> 3 kontenery healthy
+curl http://localhost:3000/actuator/health -> 200
+./scripts/check-secrets.sh           -> OK
+node scripts/validate-api-contract.mjs -> OK
+git diff --check                     -> OK
+```
+
+### 11.2 Testy modułu messages (48 z 120)
+
+| Plik | Liczba | Co doszło w ZR-20 |
+|---|---:|---|
+| `src/features/messages/api.test.ts` | 8 | `deleteMessage`: `DELETE` bez ciała, `cache: 'no-store'`, CSRF, `204` → `undefined`, `encodeURIComponent` w ścieżce; brak `ownerId` także dla usuwania |
+| `src/features/messages/errors.test.ts` | 8 | `isMissingMessage`: `404 MESSAGE_NOT_FOUND` i `400 INVALID_MESSAGE_ID` to „już usunięta”, a `INVALID_CURSOR`, `500` i błąd sieci — nie |
+| `src/features/messages/MessageListItem.test.tsx` | 15 | potwierdzenie inline z fokusem na „Tak, usuń”, anulowanie bez żądania, `DELETE` dopiero po potwierdzeniu, blokada akcji podczas `pending`, `404` → `onDeleted(..., { alreadyGone: true })`, błąd `500` z alertem i zachowaną pozycją, `401` kończący sesję |
+| `src/features/messages/MessagesPanel.test.tsx` | 17 | usunięcie tylko wskazanej pozycji bez zmiany kursora, auto-dociągnięcie kolejnej strony po usunięciu ostatniej widocznej, pustka dopiero bez `hasMore`, komunikat „Wiadomość była już usunięta.”, błąd inny niż `404` zostawia listę |
+
+Pozostałe pliki bez zmian; łącznie 120 testów w 15 plikach.
+
+### 11.3 Mapowanie kryteriów akceptacji
+
+| Kryterium | Dowód |
+|---|---|
+| Użytkownik może usunąć własną wiadomość | `api.test.ts` potwierdza `DELETE /api/messages/{id}` z CSRF; `MessageListItem.test.tsx` — żądanie dopiero po „Tak, usuń”; smoke: `DELETE … 204`, pozycja i odszyfrowana treść znikają z DOM |
+| Usunięcie wymaga świadomego potwierdzenia | `role="group"` „Potwierdzenie usunięcia wiadomości”, fokus na „Tak, usuń”, „Anuluj” chowa grupę i nie wysyła żądania; smoke potwierdza brak `DELETE` przed potwierdzeniem i fokus |
+| Usunięta lub nieistniejąca wiadomość nie blokuje widoku | `404` jest mapowane na sukces: pozycja znika, panel pokazuje `role="status"` „Wiadomość była już usunięta.”, brak alertu; smoke usuwa wiersz w tle i powtarza akcję w UI |
+| Paginacja pozostaje spójna po usunięciu | Test panelu: kursor bez zmian, po usunięciu ostatniej widocznej pozycji przy `hasMore=true` dociągana jest następna strona tym samym kursorem; pustka tylko przy braku dalszych danych |
+| Brak wycieku treści | `pre` z plaintextem znika razem z pozycją; smoke: brak markera w DOM po usunięciu i po wylogowaniu, `localStorage`/`sessionStorage` puste |
+
+### 11.4 Smoke w przeglądarce (21/21)
+
+Playwright 1.64.1 + Google Chrome 157 (headless), ad-hoc poza repozytorium, przeciwko Compose i nginx.
+
+| Krok | Oczekiwanie | Wynik |
+|---|---|---|
+| Logowanie `alice` / `AliceDemo123!` | widoczna lista „Zapisane wiadomości” | PASS |
+| „Szyfruj i zapisz” | `201`, nowe `id` | PASS |
+| „Odśwież listę” | pozycja z tym `id` w `li.message-item` | PASS |
+| „Pokaż pakiet” i „Odszyfruj” przed usunięciem | pakiet `v1.…` i plaintext w pozycji | PASS |
+| „Usuń” | grupa potwierdzenia, fokus na „Tak, usuń”, brak `DELETE` przed potwierdzeniem | PASS |
+| „Anuluj” | grupa znika, pozycja zostaje, brak żądania | PASS |
+| „Tak, usuń” | `DELETE` → `204`, pozycja odmontowana, brak plaintextu w DOM | PASS |
+| Wiersz usunięty w tle (`fetch` z tej samej sesji) | `DELETE` → `204` | PASS |
+| Ponowne usunięcie w UI | `DELETE` → `404`, komunikat „Wiadomość była już usunięta.”, pozycja znika, brak alertu | PASS |
+| Storage po operacjach | `localStorage` i `sessionStorage` puste | PASS |
+| Wylogowanie | powrót do formularza, brak listy i plaintextu w DOM | PASS |
+| Błędy strony | `pageerror` puste | PASS |
+
+Sekwencja API zarejestrowana przez Playwright:
+
+```text
+GET    /api/messages?limit=10        200
+POST   /api/messages                 201
+GET    /api/messages?limit=10        200
+GET    /api/messages/{id}            200
+POST   /api/messages/{id}/decrypt    200
+DELETE /api/messages/{id}            204
+POST   /api/messages                 201
+GET    /api/messages?limit=10        200
+DELETE /api/messages/{id}            204 (w tle, ta sama sesja)
+DELETE /api/messages/{id}            404 (UI traktuje jak sukces)
+```
+
+### 11.5 Ograniczenia ZR-20
+
+- Smoke Playwright był jednorazowy i nie jest commitowany; formalne E2E i axe pozostają osobnym zadaniem.
+- Testy komponentów mockują moduł `./api`; realny kontrakt potwierdzają `api.test.ts`, curl i smoke.
+- `handleDeleted` czyta stan z bieżącego renderu; jedno usunięcie kończy się przed kolejnym, więc nie ma równoległych usunięć w jednym panelu.
+- Auto-dociągnięcie strony to jedno dodatkowe żądanie listy wywołane akcją użytkownika, nie prefetch pakietów ani plaintextu.
+- Limiter crypto 60/30 nadal nie istnieje; mapowanie `429` jest pokryte testem jednostkowym, nie realnym limitem.
+- Brak testów responsywności i zrzutów przy 360/768/1280 px; R07 pozostaje otwarte.
+
+### 11.6 Dziennik wykonania
+
+| Data | Zmiana | Uzasadnienie | Problem i rozwiązanie | Testy | Następny krok |
+|---|---|---|---|---|---|
+| 2026-11-14 | Dodano `deleteMessage`, `isMissingMessage`, potwierdzenie inline w `MessageListItem`, usuwanie pozycji i auto-dociągnięcie strony w `MessagesPanel`, style `button--danger`/potwierdzenia/komunikatu oraz 14 testów. | Realizacja R01, R04, R06, R09: trwałe usuwanie własnej wiadomości z potwierdzeniem, `404` jako osiągnięty cel, spójny kursor i brak treści w DOM. | (1) `404` przy usuwaniu nie może pokazywać alertu — dodano `isMissingMessage` i osobną ścieżkę `alreadyGone` z `role="status"`. (2) Po usunięciu ostatniej widocznej pozycji `handleLoadMore` miał nieaktualne domknięcie — panel wywołuje `loadNextPage` z kursorem ze stanu. (3) Smoke nie może szukać `id` w `body`, bo pokazuje go też sekcja wyniku szyfrowania — lokalizator `li.message-item`. | `npm run lint`, `format:check`, `npm test` 120/120, `npm run build`; curl i smoke Playwright 21/21 PASS; `check-secrets`, `validate-api-contract` i `git diff --check` OK. | Limitery crypto 60/30, potem formalne E2E, CI i `docs/PERFORMANCE.md`. |

@@ -1,6 +1,7 @@
 package com.szlaczek.backend.message.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -195,6 +196,78 @@ class MessageControllerIntegrationTests {
         mockMvc.perform(post("/api/messages/" + id + "/decrypt").session(alice.session()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("CSRF_INVALID"));
+    }
+
+    @Test
+    void deleteIsOwnerScopedAndRemovesOnlyTheOwnersRow() throws Exception {
+        Session alice = login("alice", "AliceDemo123!");
+        Session bob = login("bob", "BobDemo1234!");
+        String id = JsonPath.read(
+                create(alice, "wiadomość do usunięcia")
+                        .andExpect(status().isCreated())
+                        .andReturn().getResponse().getContentAsString(),
+                "$.id");
+
+        mockMvc.perform(delete("/api/messages/" + id)
+                .session(bob.session())
+                .cookie(bob.xsrfCookie())
+                .header("X-XSRF-TOKEN", bob.token()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("MESSAGE_NOT_FOUND"))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
+        assertThat(messageCount(id)).isEqualTo(1);
+
+        MvcResult deleted = mockMvc.perform(delete("/api/messages/" + id)
+                .session(alice.session())
+                .cookie(alice.xsrfCookie())
+                .header("X-XSRF-TOKEN", alice.token()))
+                .andExpect(status().isNoContent())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andReturn();
+        assertThat(deleted.getResponse().getContentAsString()).isEmpty();
+        assertThat(messageCount(id)).isZero();
+
+        mockMvc.perform(get("/api/messages/" + id).session(alice.session()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("MESSAGE_NOT_FOUND"));
+        mockMvc.perform(delete("/api/messages/" + id)
+                .session(alice.session())
+                .cookie(alice.xsrfCookie())
+                .header("X-XSRF-TOKEN", alice.token()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("MESSAGE_NOT_FOUND"));
+        mockMvc.perform(get("/api/messages").session(alice.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void deleteRequiresValidIdSessionAndCsrf() throws Exception {
+        Session alice = login("alice", "AliceDemo123!");
+        String id = JsonPath.read(
+                create(alice, "wiadomość chroniona")
+                        .andExpect(status().isCreated())
+                        .andReturn().getResponse().getContentAsString(),
+                "$.id");
+
+        mockMvc.perform(delete("/api/messages/" + id))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+        mockMvc.perform(delete("/api/messages/" + id).session(alice.session()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CSRF_INVALID"));
+        mockMvc.perform(delete("/api/messages/not-a-uuid")
+                .session(alice.session())
+                .cookie(alice.xsrfCookie())
+                .header("X-XSRF-TOKEN", alice.token()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_MESSAGE_ID"));
+        assertThat(messageCount(id)).isEqualTo(1);
+    }
+
+    private int messageCount(String id) {
+        return jdbcTemplate.queryForObject(
+                "select count(*) from messages where id = ?::uuid", Integer.class, id);
     }
 
     private org.springframework.test.web.servlet.ResultActions create(Session session, String plaintext)

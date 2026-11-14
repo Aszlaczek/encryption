@@ -8,11 +8,11 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-13)
 
-- Ostatni commit funkcjonalny: `bd0da9b` (ZR-19 — lista własnych wiadomości); drzewo powinno być czyste.
-- Ukończone: ZR-01…ZR-19.
-- Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem; formularze szyfrowania/deszyfrowania z licznikami, kopiowaniem, rozdziałem „Szyfruj”/„Szyfruj i zapisz”, mapowaniem błędów i renderowaniem treści wyłącznie jako tekst; lista zapisanych wiadomości z paginacją kursorem, stanami ładowania/pustki/błędu, podglądem pakietu i deszyfrowaniem dopiero po kliknięciu.
-- **Nie ma jeszcze** usuwania wiadomości ani UI usuwania, limitera crypto 60/30 na minutę. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
-- Testy: 125/125 backendu (`./mvnw spotless:check verify`), 106/106 frontendu (`npm test`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md).
+- Ostatni commit funkcjonalny: `bd0da9b` (ZR-19 — lista własnych wiadomości); ZR-20 (usuwanie) jest zaimplementowany i czeka na commit.
+- Ukończone: ZR-01…ZR-19, ZR-20 w trakcie domknięcia.
+- Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, `DELETE /api/messages/{id}`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem; formularze szyfrowania/deszyfrowania z licznikami, kopiowaniem i rozdziałem „Szyfruj”/„Szyfruj i zapisz”; lista zapisanych wiadomości z paginacją kursorem, podglądem pakietu i deszyfrowaniem dopiero po kliknięciu; usuwanie z potwierdzeniem inline, `404` jako „już usunięta” i auto-dociąganiem strony.
+- **Nie ma jeszcze** limitera crypto 60/30 na minutę. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
+- Testy: 128/128 backendu (`./mvnw spotless:check verify`), 120/120 frontendu (`npm test`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md).
 
 ## Najpierw przeczytaj
 
@@ -140,10 +140,13 @@ docker compose exec -T db psql -U encryption -d encryption -c 'select username, 
 - **Kursor tylko po sukcesie** — nie przesuwaj kursora przed udaną odpowiedzią; błąd strony musi ponowić ten sam kursor. `hasMore && !nextCursor` traktuj jako błąd, inaczej powstaje pętla.
 - **Bez prefetchu treści** — lista pobiera wyłącznie `id`/`createdAt`; `GET /api/messages/{id}` i `POST …/decrypt` wykonuj dopiero po kliknięciu. Nie dodawaj masowego pobierania pakietów ani plaintextu.
 - **Deduplikacja po `id`** — kolejne strony mogą powtórzyć rekord; scalaj po identyfikatorze zamiast slepo dopisywać.
+- **`404` przy usuwaniu to sukces** — `DELETE /api/messages/{id}` dla cudzej i nieistniejącej wiadomości daje identyczne `404`; UI usuwa pozycję i pokazuje `role="status"` „Wiadomość była już usunięta.”, a nie alert.
+- **Kursor po usunięciu się nie zmienia** — usunięcie wiersza nie unieważnia kursora `(createdAt, id)`; nie resetuj go i nie pokazuj pustki, gdy `hasMore=true`. Po usunięciu ostatniej widocznej pozycji dociągnij kolejną stronę osobną funkcją, nie z nieaktualnego domknięcia `handleLoadMore`.
+- **Twarde usunięcie** — `deleteByIdAndOwner_Id` zwracające `0` to `MessageNotFoundException`; nie dodawaj `find` + `delete`, `findAll` ani kosza. Usunięcie wiersza nie unieważnia skopiowanego pakietu (klucz i AAD bez zmian).
 - **`onSessionExpired` w efekcie** — w `MessagesPanel` callback jest trzymany w `useRef`, żeby nie restartować pierwszego pobrania przy każdej zmianie funkcji z `AuthProvider`.
 - **Testy listy** — `src/test/backend.ts` udostępnia router `fetch` po ścieżce; nowe żądanie (np. lista po logowaniu) dodaj jako trasę, a nie kolejny `mockResolvedValueOnce`, żeby nie przesuwać kolejki.
 - **Treść tylko jako tekst** — wynik deszyfrowania renderuj przez `{plaintext}` w `<pre>`/`<output>`; nie używaj `dangerouslySetInnerHTML` ani `innerHTML`.
 
 ## Następny krok
 
-`DELETE /api/messages/{id}` i UI usuwania zapisanych wiadomości, a następnie limitery crypto 60/min i 30/min. Potem formalne testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).
+Limitery crypto 60/min i 30/min (szyfrowanie/deszyfrowanie) z `Retry-After` i testem okna na kontrolowanym zegarze. Potem formalne testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).

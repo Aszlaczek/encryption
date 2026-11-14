@@ -1,11 +1,11 @@
-# Raport testów izolacji użytkowników i persystencji (ZR-16)
+# Raport testów izolacji użytkowników, persystencji i usuwania (ZR-16, ZR-20)
 
-- **Data:** 2026-11-13
-- **Zadanie:** ZR-16 — izolacja dwóch użytkowników i persystencja
+- **Data:** 2026-11-13 (ZR-16), 2026-11-14 (ZR-20)
+- **Zadania:** ZR-16 — izolacja dwóch użytkowników i persystencja; ZR-20 — usuwanie własnych wiadomości
 - **Wymagania:** R02, R04, R06
-- **Zależności potwierdzone:** ZR-09 (`a372022`), ZR-13 (`7c10342`), ZR-14 (`66fce7a`), ZR-15 (`a310d9e`)
-- **Commit funkcjonalny:** `d960326`
-- **Klasa testowa:** `backend/src/test/java/com/szlaczek/backend/message/api/MessageIsolationIntegrationTests.java`
+- **Zależności potwierdzone:** ZR-09 (`a372022`), ZR-13 (`7c10342`), ZR-14 (`66fce7a`), ZR-15 (`a310d9e`); dla ZR-20 dodatkowo ZR-19 (`bd0da9b`)
+- **Commit funkcjonalny:** ZR-16 `d960326`; ZR-20 w tym samym commicie co ten raport
+- **Klasy testowe:** `MessageIsolationIntegrationTests` (ZR-16, 11 testów po ZR-20), `MessageControllerIntegrationTests` (ZR-20, 5 testów)
 
 ## 1. Środowisko
 
@@ -109,9 +109,64 @@ Wynik: `Tests run: 10, Failures: 8` — testy wykryły wyciek danych A do sesji 
 |---|---|---|---|---|---|
 | 2026-11-13 | Dodano `MessageIsolationIntegrationTests` (10 testów); bez zmian kodu produkcyjnego. Zaktualizowano `README.md`, `docs/PROJECT_MEMORY.md`, `AGENTS.md` i dodano ten raport. | Domknięcie R02, R04 i R06: izolacja A/B, sesja, CSRF, parametryzacja i faktyczny rekord PostgreSQL. | Payload SQL injection zawierający `;` i spacje w ścieżce był odrzucany przez warstwę kontenera (puste `400`, bez RFC 9457). Rozwiązanie: w ścieżce testować payloady bez surowych średników (`1' OR '1'='1`, wariant UUID), a próby `DROP TABLE` przenieść do parametrów `limit`/`cursor` i nieznanego pola `ownerId`. | `./mvnw -Dtest=MessageIsolationIntegrationTests test` — 10/10; `./mvnw spotless:check verify` — 125/125; frontend 3/3; kontrola mutacyjna 8/10 FAIL, po przywróceniu 10/10. | `DELETE /api/messages/{id}` oraz limitery crypto 60/min i 30/min. |
 
-## 8. Ograniczenia
+## 8. ZR-20 — usuwanie własnych wiadomości
+
+### 8.1 Komendy i wyniki
+
+Weryfikacja 2026-11-14; JDK 27.0.1 (target 17), Maven 3.10.0, Spring Boot 4.1.2, Testcontainers 2.0.5, PostgreSQL 16.15, Docker 29.9.1.
+
+```text
+cd backend && ./mvnw spotless:check verify   -> Tests run: 128, Failures: 0, Errors: 0, Skipped: 0; BUILD SUCCESS
+./scripts/check-secrets.sh                   -> OK
+node scripts/validate-api-contract.mjs       -> OK (28 przykładów JSON, 12 endpointów, wektor AES-GCM)
+git diff --check                             -> OK
+```
+
+Pełny przebieg 128 testów obejmuje 126 testów sprzed ZR-20 i 2 nowe w `MessageControllerIntegrationTests` (`MessageIsolationIntegrationTests` rośnie z 10 do 11).
+
+### 8.2 Macierz testów ZR-20
+
+| Test | Scenariusz | Oczekiwanie | Wynik |
+|---|---|---|---|
+| `deleteIsOwnerScopedAndRemovesOnlyTheOwnersRow` | A ma 2 wiadomości; `DELETE` pierwszej z CSRF; później `GET` i `DELETE` tego samego `id` | `204` bez ciała i `no-store`; liczba wierszy A spada o 1, drugi wiersz zostaje; `GET` i ponowny `DELETE` → `404 MESSAGE_NOT_FOUND` | PASS |
+| `deleteRequiresValidIdSessionAndCsrf` | `DELETE` bez sesji, bez CSRF, z `not-a-uuid` i z losowym UUID | `401 UNAUTHENTICATED` przed `403`; `403 CSRF_INVALID`; `400 INVALID_MESSAGE_ID`; `404 MESSAGE_NOT_FOUND`; brak usunięcia wiersza | PASS |
+| `deleteNeverTouchesAnotherUsersMessage` | B wysyła `DELETE /api/messages/{idA}` z poprawnym CSRF; A sprawdza `GET` i listę | B dostaje identyczne `404 MESSAGE_NOT_FOUND` jak dla losowego UUID; `GET` i lista A nadal `200`, wiersz A nietknięty | PASS |
+
+Testy używają rzeczywistego PostgreSQL w kontenerze i `ddl-auto=validate`; nie zmieniono schematu ani migracji `V1`–`V3`.
+
+### 8.3 Rzeczywisty scenariusz curl przez nginx
+
+A = `alice`, B = `bob`; dwa komunikaty A zapisane przez `POST /api/messages`, identyfikatory `ec2c1cbd…` i `700d3bb7…`.
+
+| Aktor | Operacja | Wynik | Dowód |
+|---|---|---|---|
+| A | `DELETE /api/messages/{own}` + CSRF | `204`, puste ciało | `body_bytes=0`, `Cache-Control: no-store` |
+| A | `GET /api/messages/{own}` po usunięciu | `404 MESSAGE_NOT_FOUND` | brak pakietu i plaintextu |
+| A | ponowny `DELETE` tego samego `id` | `404 MESSAGE_NOT_FOUND` | idempotentny efekt końcowy |
+| B | `DELETE /api/messages/{idA}` + CSRF | `404 MESSAGE_NOT_FOUND` | ten sam `code` i `detail` co dla nieistniejącej |
+| A | `GET /api/messages/{idA}` po próbie B | `200` | wiersz A nietknięty |
+| A | `DELETE` losowego UUID | `404 MESSAGE_NOT_FOUND` | brak rozróżnienia od cudzej |
+| A | `DELETE /api/messages/not-a-uuid` | `400 INVALID_MESSAGE_ID` | błąd RFC 9457 |
+| A | `DELETE` bez `X-XSRF-TOKEN` | `403 CSRF_INVALID` | wiersz nadal istnieje |
+| anonim | `DELETE` z poprawnym `id` | `401 UNAUTHENTICATED` | `401` przed `403` |
+| — | `psql` po scenariuszu | usunięty wiersz `0`, zachowany `1` | `select count(*) from messages` |
+
+### 8.4 Asercje bazy po usunięciu
+
+- Usunięty `id` nie istnieje już w `messages`; pozostały wiersz A nadal ma `owner_id` A, poprawny `nonce`, `ciphertext`, `tag` i `key_id=k1`.
+- Brak kolumn z plaintextem — usunięcie nie zmienia modelu danych, tylko usuwa wiersz.
+- Migracje `V1`–`V3` bez zmian; `flyway_schema_history` bez nowych wpisów, wszystkie `success = true`.
+
+### 8.5 Ograniczenia ZR-20
+
+- Usunięcie jest twarde i nieodwracalne; nie ma kosza ani miękkiego usuwania.
+- Skopiowany wcześniej pakiet pozostaje ważny, bo klucz AES i `ownerId` w AAD się nie zmieniają; unieważnienie wymagałoby rotacji klucza.
+- Limiter `DELETE` nie istnieje; ochrona opiera się na sesji, CSRF i owner scope.
+- Testy MockMvc nie weryfikują atrybutów cookie; politykę `JSESSIONID`/`XSRF-TOKEN` potwierdza curl przez nginx.
+
+## 9. Ograniczenia
 
 - MockMvc nie jest dowodem atrybutów cookie (`SameSite`, `HttpOnly`); politykę `JSESSIONID`/`XSRF-TOKEN` weryfikują istniejące testy auth i `curl` przez nginx.
-- Testy nie obejmują `DELETE /api/messages/{id}` ani limiterów 60/30 na minutę — te funkcje nie są jeszcze zaimplementowane (kolejne zadania).
+- Testy nie obejmują limiterów 60/30 na minutę dla crypto — ta funkcja nie jest jeszcze zaimplementowana (kolejne zadanie).
 - Brak testów E2E i testów obciążeniowych; sesje i przyszłe limitery są in-memory (jedna instancja).
 - Testy wymagają uruchomionego Dockera (Testcontainers).

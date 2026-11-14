@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../shared/api';
-import { describeMessageError } from './errors';
+import { describeMessageError, isMissingMessage } from './errors';
 
 describe('describeMessageError', () => {
   it('treats a missing ApiError as a network failure', () => {
@@ -61,5 +61,13 @@ describe('describeMessageError', () => {
       kind: 'form',
       message: 'Wystąpił błąd serwera. Spróbuj ponownie.',
     });
+  });
+
+  it('recognises a message that is already gone', () => {
+    expect(isMissingMessage(new ApiError(404, 'MESSAGE_NOT_FOUND', 'Brak.'))).toBe(true);
+    expect(isMissingMessage(new ApiError(400, 'INVALID_MESSAGE_ID', 'Zły id.'))).toBe(true);
+    expect(isMissingMessage(new ApiError(400, 'INVALID_CURSOR', 'Zły kursor.'))).toBe(false);
+    expect(isMissingMessage(new ApiError(500, 'MESSAGE_NOT_FOUND', 'Brak.'))).toBe(false);
+    expect(isMissingMessage(new TypeError('Failed to fetch'))).toBe(false);
   });
 });

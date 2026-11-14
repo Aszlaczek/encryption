@@ -4,16 +4,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../shared/api';
 import { MessagesPanel } from './MessagesPanel';
 
-const { listMessagesMock, getMessageMock, decryptMessageMock } = vi.hoisted(() => ({
-  listMessagesMock: vi.fn(),
-  getMessageMock: vi.fn(),
-  decryptMessageMock: vi.fn(),
-}));
+const { listMessagesMock, getMessageMock, decryptMessageMock, deleteMessageMock } = vi.hoisted(
+  () => ({
+    listMessagesMock: vi.fn(),
+    getMessageMock: vi.fn(),
+    decryptMessageMock: vi.fn(),
+    deleteMessageMock: vi.fn(),
+  }),
+);
 
 vi.mock('./api', () => ({
   listMessages: listMessagesMock,
   getMessage: getMessageMock,
   decryptMessage: decryptMessageMock,
+  deleteMessage: deleteMessageMock,
 }));
 
 function summary(id: string) {
@@ -31,6 +35,7 @@ beforeEach(() => {
   listMessagesMock.mockReset();
   getMessageMock.mockReset();
   decryptMessageMock.mockReset();
+  deleteMessageMock.mockReset();
 });
 
 describe('MessagesPanel', () => {
@@ -229,6 +234,104 @@ describe('MessagesPanel', () => {
     expect(listMessagesMock).toHaveBeenCalledTimes(2);
     const options = listMessagesMock.mock.calls[1][0] as { cursor?: string };
     expect(options.cursor).toBeUndefined();
+  });
+
+  it('removes only the deleted item and keeps the current cursor', async () => {
+    const user = userEvent.setup();
+    listMessagesMock.mockResolvedValueOnce(page([summary('message-a'), summary('message-b')]));
+    deleteMessageMock.mockResolvedValue(undefined);
+
+    render(<MessagesPanel />);
+
+    await screen.findByText('message-a');
+    const first = screen.getAllByRole('listitem')[0];
+    await user.click(within(first).getByRole('button', { name: /Usuń wiadomość/ }));
+    await user.click(within(first).getByRole('button', { name: 'Tak, usuń' }));
+
+    await waitFor(() => expect(screen.queryByText('message-a')).not.toBeInTheDocument());
+    expect(deleteMessageMock).toHaveBeenCalledWith('message-a');
+    expect(screen.getByText('message-b')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(listMessagesMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('To wszystkie zapisane wiadomości.')).toBeInTheDocument();
+  });
+
+  it('loads the next page when the last visible item is deleted and more data exists', async () => {
+    const user = userEvent.setup();
+    listMessagesMock
+      .mockResolvedValueOnce(
+        page([summary('message-a')], { hasMore: true, nextCursor: 'cursor-1' }),
+      )
+      .mockResolvedValueOnce(page([summary('message-b')]));
+    deleteMessageMock.mockResolvedValue(undefined);
+
+    render(<MessagesPanel />);
+
+    await screen.findByText('message-a');
+    const first = screen.getAllByRole('listitem')[0];
+    await user.click(within(first).getByRole('button', { name: /Usuń wiadomość/ }));
+    await user.click(within(first).getByRole('button', { name: 'Tak, usuń' }));
+
+    expect(await screen.findByText('message-b')).toBeInTheDocument();
+    expect(listMessagesMock).toHaveBeenNthCalledWith(2, { cursor: 'cursor-1' });
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.queryByText(/Nie masz jeszcze zapisanych wiadomości/)).not.toBeInTheDocument();
+  });
+
+  it('shows the empty state after deleting the only item without more pages', async () => {
+    const user = userEvent.setup();
+    listMessagesMock.mockResolvedValueOnce(page([summary('message-a')]));
+    deleteMessageMock.mockResolvedValue(undefined);
+
+    render(<MessagesPanel />);
+
+    await screen.findByText('message-a');
+    const first = screen.getAllByRole('listitem')[0];
+    await user.click(within(first).getByRole('button', { name: /Usuń wiadomość/ }));
+    await user.click(within(first).getByRole('button', { name: 'Tak, usuń' }));
+
+    expect(await screen.findByText(/Nie masz jeszcze zapisanych wiadomości/)).toBeInTheDocument();
+    expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pobierz więcej' })).not.toBeInTheDocument();
+    expect(listMessagesMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces a message that was already deleted on the server', async () => {
+    const user = userEvent.setup();
+    listMessagesMock.mockResolvedValueOnce(page([summary('message-a'), summary('message-b')]));
+    deleteMessageMock.mockRejectedValue(new ApiError(404, 'MESSAGE_NOT_FOUND', 'Brak.'));
+
+    render(<MessagesPanel />);
+
+    await screen.findByText('message-a');
+    const first = screen.getAllByRole('listitem')[0];
+    await user.click(within(first).getByRole('button', { name: /Usuń wiadomość/ }));
+    await user.click(within(first).getByRole('button', { name: 'Tak, usuń' }));
+
+    expect(await screen.findByText('Wiadomość była już usunięta.')).toBeInTheDocument();
+    expect(screen.queryByText('message-a')).not.toBeInTheDocument();
+    expect(screen.getByText('message-b')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('keeps the list when deletion fails for another reason', async () => {
+    const user = userEvent.setup();
+    listMessagesMock.mockResolvedValueOnce(page([summary('message-a'), summary('message-b')]));
+    deleteMessageMock.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'Błąd serwera.'));
+
+    render(<MessagesPanel />);
+
+    await screen.findByText('message-a');
+    const first = screen.getAllByRole('listitem')[0];
+    await user.click(within(first).getByRole('button', { name: /Usuń wiadomość/ }));
+    await user.click(within(first).getByRole('button', { name: 'Tak, usuń' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Wystąpił błąd serwera. Spróbuj ponownie.');
+    expect(screen.getByText('message-a')).toBeInTheDocument();
+    expect(screen.getByText('message-b')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.queryByText('Wiadomość była już usunięta.')).not.toBeInTheDocument();
   });
 
   it('aborts the initial request on unmount', () => {

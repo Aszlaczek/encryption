@@ -2,12 +2,12 @@
 
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
-- **Ostatnia aktualizacja:** 2026-11-13
-- **Ostatni commit funkcjonalny:** `bd0da9b` — lista zapisanych wiadomości (ZR-19)
+- **Ostatnia aktualizacja:** 2026-11-14
+- **Ostatni commit funkcjonalny:** `bd0da9b` — lista zapisanych wiadomości (ZR-19); ZR-20 (usuwanie) w toku przed commitem
 - **Gałąź:** `main`, gotowa do push na `origin/main`
-- **Stan drzewa:** czysty po commicie
-- **Zadania ukończone:** ZR-01…ZR-19
-- **Następne zadanie:** `DELETE /api/messages/{id}` i UI usuwania; opcjonalnie limitery crypto 60/30
+- **Stan drzewa:** zmiany ZR-20 przed commitem
+- **Zadania ukończone:** ZR-01…ZR-19, ZR-20 w trakcie domknięcia
+- **Następne zadanie:** limitery crypto 60/min i 30/min; potem formalne E2E, CI i `docs/PERFORMANCE.md`
 
 ## 1. Cel projektu
 
@@ -43,11 +43,11 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 - Izolacja dwóch użytkowników i persystencja pokryte `MessageIsolationIntegrationTests` (10 testów): lista, szczegóły, deszyfrowanie zapisanej wiadomości i wklejonego pakietu, sesja, CSRF, SQL injection oraz faktyczne wiersze PostgreSQL i historia Flyway; raport w `docs/TEST_REPORT.md`.
 - Frontend logowania i wspólny klient API: `JSESSIONID` w cookie, CSRF z `XSRF-TOKEN` tylko dla mutacji, `/me` przy starcie (401 = anonim), formularz z etykietami/hintami/błędami pól, mapowanie `400`/`401`/`429`, stan oczekiwania, wylogowanie i brak danych w `localStorage`/`sessionStorage`/IndexedDB; 26 testów i smoke Playwright w `docs/TEST_REPORT_FRONTEND.md`.
 - Frontend szyfrowania i deszyfrowania: dwie sekcje (szyfrowanie, deszyfrowanie), licznik punktów kodowych i bajtów UTF-8, osobne akcje „Szyfruj” (bez zapisu) i „Szyfruj i zapisz”, pole wklejania pakietu z `trim()`, kopiowanie pakietu i odszyfrowanej treści przez Clipboard API, mapowanie `VALIDATION_FAILED`/`INVALID_PACKAGE_FORMAT`/`DECRYPT_FAILED`/`429`/`403`/sieci, `401` kończący sesję z komunikatem na formularzu logowania oraz renderowanie treści wyłącznie jako tekst (bez `innerHTML`); 71 testów frontendu i smoke Playwright w `docs/TEST_REPORT_FRONTEND.md`.
-- Frontend listy zapisanych wiadomości: `features/messages` pobiera pierwszą stronę `limit=10`, dokłada kolejne po „Pobierz więcej” z kursorem z odpowiedzi, deduplikuje po `id`, zachowuje wczytane pozycje po błędzie strony i ponawia ten sam kursor; stany ładowania, pustki i błędu mają `role="status"`/`role="alert"` i fokus na alercie. Lista pokazuje wyłącznie `id` i `createdAt`; pakiet i plaintext są pobierane dopiero po kliknięciu przy wybranej wiadomości, a treść renderowana jest jako tekst. `401` kończy sesję przez `onSessionExpired`, a `App` montuje panel z `key={state.user.id}`, więc wylogowanie i zmiana konta czyszczą listę oraz odszyfrowaną treść. Łącznie 106 testów frontendu i smoke Playwright w `docs/TEST_REPORT_FRONTEND.md`.
+- Frontend listy zapisanych wiadomości: `features/messages` pobiera pierwszą stronę `limit=10`, dokłada kolejne po „Pobierz więcej” z kursorem z odpowiedzi, deduplikuje po `id`, zachowuje wczytane pozycje po błędzie strony i ponawia ten sam kursor; stany ładowania, pustki i błędu mają `role="status"`/`role="alert"` i fokus na alercie. Lista pokazuje wyłącznie `id` i `createdAt`; pakiet i plaintext są pobierane dopiero po kliknięciu przy wybranej wiadomości, a treść renderowana jest jako tekst. `401` kończy sesję przez `onSessionExpired`, a `App` montuje panel z `key={state.user.id}`, więc wylogowanie i zmiana konta czyszczą listę oraz odszyfrowaną treść. Łącznie 120 testów frontendu i smoke Playwright w `docs/TEST_REPORT_FRONTEND.md`.
+- Usuwanie własnych wiadomości: `DELETE /api/messages/{id}` usuwa wiersz przez `deleteByIdAndOwner_Id`, a `0` trafień daje `404 MESSAGE_NOT_FOUND`; sukces to `204` bez ciała i `no-store`. UI wymaga potwierdzenia inline, traktuje `404` jako „już usunięta” (`role="status"`), nie resetuje kursora i dociąga kolejną stronę, gdy usunięto ostatnią widoczną pozycję przy `hasMore=true`. Bez migracji i bez zmian schematu; skopiowany wcześniej pakiet pozostaje ważny.
 
 ### Jeszcze nie istnieje
 
-- usuwanie wiadomości i UI usuwania,
 - limity szyfrowania/deszyfrowania (60/min i 30/min),
 - testy E2E, konfiguracja CI, `docs/PERFORMANCE.md`,
 - rotacja kluczy i obsługa wielu aktywnych kluczy.
@@ -56,8 +56,8 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 
 | Warstwa | Liczba | Uruchomienie |
 |---|---:|---|
-| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 125 | `cd backend && ./mvnw spotless:check verify` |
-| Frontend (Vitest + Testing Library) | 106 | `cd frontend && npm test` |
+| Backend (JUnit 5, Testcontainers PostgreSQL 16) | 128 | `cd backend && ./mvnw spotless:check verify` |
+| Frontend (Vitest + Testing Library) | 120 | `cd frontend && npm test` |
 | E2E | 0 | brak |
 
 Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose budują się z `-DskipTests`, więc testy trzeba uruchomić osobno.
@@ -88,6 +88,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-17 | `c51a319` | 2026-11-13 | Wspólny klient HTTP z CSRF i RFC 9457; sesja `/me` z 401 = anonim; dostępny formularz logowania, mapowanie błędów, wylogowanie; brak storage; proxy dev | `npm run lint`, `format:check`, `npm test` — 26/26, `npm run build`; Compose 3 healthy; smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
 | ZR-18 | `26fda0d` | 2026-11-13 | Formularze szyfrowania i deszyfrowania: liczniki code point/UTF-8, osobne „Szyfruj” i „Szyfruj i zapisz”, wklejanie i kopiowanie pakietu oraz treści, mapowanie błędów, 401 kończący sesję, tekst bez `innerHTML` | `npm run lint`, `format:check`, `npm test` — 71/71, `npm run build`; Compose 3 healthy; smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
 | ZR-19 | `bd0da9b` | 2026-11-13 | Lista zapisanych wiadomości: paginacja kursorem, stany ładowania/pustki/błędu, retry tego samego kursora, deduplikacja, podgląd pakietu i deszyfrowanie tylko po kliknięciu, kopiowanie, tekst bez `innerHTML`, czyszczenie po wylogowaniu | `npm run lint`, `format:check`, `npm test` — 106/106, `npm run build`; Compose 3 healthy; curl (izolacja, kursor, `404`, `INVALID_CURSOR`, limit) i smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
+| ZR-20 | (commit ZR-20) | 2026-11-14 | Usuwanie własnych wiadomości: `DELETE /api/messages/{id}` z owner scope i `204`, identyczne `404` dla cudzej/nieistniejącej, potwierdzenie inline, `404` jako „już usunięta”, auto-dociągnięcie strony, brak resetu kursora, treść znika z DOM | `./mvnw spotless:check verify` — 128/128; `npm run lint`, `format:check`, `npm test` — 120/120, `npm run build`; Compose 3 healthy; curl `204`/`404`/`400`/`403`/`401`, psql 0/1; smoke Playwright 21/21 PASS; raporty `docs/TEST_REPORT.md` i `docs/TEST_REPORT_FRONTEND.md` |
 
 ### ZR-01 — zakres i decyzje
 
@@ -385,6 +386,32 @@ limit=0                              -> 400 VALIDATION_FAILED / OUT_OF_RANGE
 smoke Playwright                     -> PASS (jedno pobranie listy, brak prefetchu, izolacja, retry, pakiet, XSS, logout)
 ```
 
+### ZR-20 — usuwanie własnych wiadomości
+
+- Backend: `MessageService.delete(id, ownerId)` jest `@Transactional` i wywołuje `deleteByIdAndOwner_Id`; `0` usuniętych wierszy rzuca `MessageNotFoundException`, więc cudza i nieistniejąca wiadomość dają identyczne `404 MESSAGE_NOT_FOUND`. `MessageController` dodaje `@DeleteMapping("/{id}")` zwracający `ResponseEntity.noContent()`. Bez nowej migracji — `V1`–`V3` bez zmian.
+- `deleteByIdAndOwner_Id` z ZR-06 jest teraz używane; nie ma `find` + `delete`, `findAll` ani osobnego uprawnienia do usuwania.
+- Frontend: `deleteMessage(id)` wysyła `DELETE` bez ciała (klient dokłada CSRF i obsługuje `204`). `MessageListItem` ma potwierdzenie inline (`role="group"`, fokus na „Tak, usuń”), blokuje pozostałe akcje podczas `pending`, a `404`/`INVALID_MESSAGE_ID` zgłasza jako `onDeleted(id, { alreadyGone: true })`. Inne błędy zostają w pozycji, `401` kończy sesję.
+- `MessagesPanel` usuwa pozycję po `id` bez ruszania kursora; przy pustej liście i `hasMore=true` dociąga kolejną stronę tym samym kursorem. Pustka jest pokazywana tylko wtedy, gdy nie ma już danych. `notice` z `role="status"` pokazuje „Wiadomość była już usunięta.”.
+- Testy: backend `MessageControllerIntegrationTests` (3→5) i `MessageIsolationIntegrationTests` (10→11); frontend `api.test.ts` (6→8), `errors.test.ts` (7→8), `MessageListItem.test.tsx` (9→15), `MessagesPanel.test.tsx` (12→17); łącznie 14 nowych testów i 120/120.
+
+Weryfikacja ZR-20 (2026-11-14; Node.js 22.19.0, npm 11.16.0, Playwright 1.64.1 + Chrome 157, Docker Compose, PostgreSQL 16.15, JDK 27.0.1):
+
+```text
+cd backend && ./mvnw spotless:check verify -> 128/128, BUILD SUCCESS
+cd frontend && npm run lint                -> OK
+cd frontend && npm run format:check        -> OK
+cd frontend && npm test                    -> 15 plików, 120/120, PASS
+cd frontend && npm run build               -> tsc -b + vite build; JS 250.70 kB (gzip 77.08 kB)
+docker compose up -d --build               -> 3 kontenery healthy
+DELETE /api/messages/{id} + CSRF           -> 204, puste body, no-store
+GET po usunięciu / ponowny DELETE          -> 404 / 404 MESSAGE_NOT_FOUND
+DELETE cudzego id (bob → alice)            -> 404; wiersz alice nadal 200
+DELETE losowego UUID / not-a-uuid          -> 404 / 400 INVALID_MESSAGE_ID
+DELETE bez CSRF / anonimowo                -> 403 CSRF_INVALID / 401 UNAUTHENTICATED
+psql: deleted row count / kept row count   -> 0 / 1
+smoke Playwright                           -> PASS (21/21)
+```
+
 ## 4. Architektura i układ repozytorium
 
 ```text
@@ -395,10 +422,10 @@ smoke Playwright                     -> PASS (jedno pobranie listy, brak prefetc
 ├── docs/
 │   ├── API.md                # kanoniczny kontrakt HTTP
 │   ├── DATA_MODEL.md         # schemat, JPA, migracje
-│   ├── DECISIONS.md          # ADR-01, ADR-07…ADR-21
-│   ├── OPEN_QUESTIONS.md     # Q01…Q48
-│   ├── TEST_REPORT.md        # raport testów negatywnych ZR-16 (izolacja A/B, persystencja)
-│   ├── TEST_REPORT_FRONTEND.md # testy klienta, logowania, sesji, crypto i listy oraz smoke ZR-17/ZR-18/ZR-19
+│   ├── DECISIONS.md          # ADR-01, ADR-07…ADR-22
+│   ├── OPEN_QUESTIONS.md     # Q01…Q49
+│   ├── TEST_REPORT.md        # raport testów negatywnych ZR-16 i ZR-20 (izolacja A/B, DELETE, persystencja)
+│   ├── TEST_REPORT_FRONTEND.md # testy klienta, logowania, sesji, crypto i listy/usuwania oraz smoke ZR-17…ZR-20
 │   └── PROJECT_MEMORY.md     # ten dokument
 ├── scripts/
 │   ├── check-secrets.sh
@@ -497,7 +524,7 @@ AAD:    v1:<ownerId>:<keyId>
 
 ## 8. Inwentarz testów
 
-### Backend — 125 testów
+### Backend — 128 testów
 
 | Klasa | Liczba | Co sprawdza |
 |---|---:|---|
@@ -509,8 +536,8 @@ AAD:    v1:<ownerId>:<keyId>
 | `PackageCodecTests` | 23 | wektor i kanoniczny base64url, przycinanie ASCII, wersja, `key_id`, długości nonce/tag/ciphertext, minimum 1 B i maksimum 40 000 B, defensywne kopie |
 | `CryptoServiceTests` | 26 | AES-GCM round-trip Unicode/emoji/spacji/nowych linii, świeże nonce (także 100× ten sam tekst), zły tag/nonce/AAD/klucz, wersja, Base64, granice 40 000 B |
 | `CryptoControllerIntegrationTests` | 5 | szyfrowanie/deszyfrowanie HTTP, sesja, CSRF, izolacja pakietów, granica 40 000 B i brak echo błędnej treści |
-| `MessageControllerIntegrationTests` | 3 | zapis bez plaintextu, owner scope, szczegóły/decrypt, paginacja kursorowa, 404, auth i CSRF |
-| `MessageIsolationIntegrationTests` | 10 | izolacja A/B na liście, szczegółach, decrypt zapisanej wiadomości i wklejonego pakietu (5 payloadów), sesja i CSRF, SQL injection/XSS, faktyczne wiersze PostgreSQL, koperty i historia Flyway |
+| `MessageControllerIntegrationTests` | 5 | zapis bez plaintextu, owner scope, szczegóły/decrypt/delete, paginacja kursorowa, `204`, 404, auth i CSRF |
+| `MessageIsolationIntegrationTests` | 11 | izolacja A/B na liście, szczegółach, decrypt zapisanej wiadomości, wklejonego pakietu i usuwaniu (5 payloadów), sesja i CSRF, SQL injection/XSS, faktyczne wiersze PostgreSQL, koperty i historia Flyway |
 | `DemoUserSeedingIntegrationTests` | 4 | dwa konta z hashami Argon2id, dopasowanie haseł, idempotencja bez nadpisywania, brak plaintextu w bazie, principal z `id` |
 | `LoginRateLimiterTests` | 5 | blokada szóstej próby, okno 60 s, reset po sukcesie, niezależność kluczy IP/login, starzenie wpisów |
 | `UsernameNormalizerTests` | 3 | trim/lowercase, puste dane, `null` |
@@ -519,7 +546,7 @@ AAD:    v1:<ownerId>:<keyId>
 | `ApiProblemFactoryTests` | 2 | RFC 9457, `traceId`, `instance`, lista błędów pól |
 | `PasswordEncoderConfigTests` | 1 | parametry Argon2id, długość 97, dopasowanie poprawnego i błędnego hasła, sól, hasło 128 B |
 
-### Frontend — 106 testów
+### Frontend — 120 testów
 
 | Plik | Liczba | Co sprawdza |
 |---|---:|---|
@@ -534,10 +561,10 @@ AAD:    v1:<ownerId>:<keyId>
 | `src/features/crypto/EncryptPanel.test.tsx` | 11 | etykiety i licznik, pusty submit, wynik jako tekst, osobny zapis, pending, błąd pola, `429`, `401`, sieć, kopiowanie |
 | `src/features/crypto/DecryptPanel.test.tsx` | 9 | etykiety, pusty submit, `trim()`, XSS jako tekst, zły format, `DECRYPT_FAILED`, `401`, pending, kopiowanie treści |
 | `src/features/crypto/CryptoWorkspace.test.tsx` | 1 | obie sekcje i pola widoczne jednocześnie |
-| `src/features/messages/api.test.ts` | 6 | `limit=10`, kursor bez reinterpretacji, `AbortSignal`, szczegóły po `id`, decrypt POST bez ciała z CSRF, brak `ownerId` |
-| `src/features/messages/errors.test.ts` | 7 | sieć, `401`, `404`/`INVALID_MESSAGE_ID`, `INVALID_CURSOR`, `429`, `403`, `MESSAGE_UNDECRYPTABLE` vs `500` |
-| `src/features/messages/MessageListItem.test.tsx` | 9 | brak pobierania przy renderze, pakiet po kliknięciu i kopiowanie, ukrycie bez refetchu, decrypt na żądanie, XSS jako tekst, kopiowanie treści, pending, `404`/`MESSAGE_UNDECRYPTABLE` z fokusem, `401` kończący sesję |
-| `src/features/messages/MessagesPanel.test.tsx` | 12 | ładowanie i pustka, brak prefetchu, kolejna strona z kursorem, błąd strony z retry tego samego kursora, błąd pierwszej strony, `401` dla pierwszej i kolejnej strony, `429`, `hasMore` bez kursora, deduplikacja, odświeżenie, abort przy odmontowaniu |
+| `src/features/messages/api.test.ts` | 8 | `limit=10`, kursor bez reinterpretacji, `AbortSignal`, szczegóły po `id`, decrypt POST bez ciała z CSRF, delete DELETE bez ciała i z CSRF, `204`, `encodeURIComponent`, brak `ownerId` |
+| `src/features/messages/errors.test.ts` | 8 | sieć, `401`, `404`/`INVALID_MESSAGE_ID`, `INVALID_CURSOR`, `429`, `403`, `MESSAGE_UNDECRYPTABLE` vs `500`, `isMissingMessage` |
+| `src/features/messages/MessageListItem.test.tsx` | 15 | brak pobierania przy renderze, pakiet po kliknięciu i kopiowanie, ukrycie bez refetchu, decrypt na żądanie, XSS jako tekst, kopiowanie treści, pending, `404`/`MESSAGE_UNDECRYPTABLE` z fokusem, `401` kończący sesję, potwierdzenie i anulowanie, sukces `onDeleted`, blokada akcji, `404` jako już usunięta, błąd zachowujący pozycję, `401` przy usuwaniu |
+| `src/features/messages/MessagesPanel.test.tsx` | 17 | ładowanie i pustka, brak prefetchu, kolejna strona z kursorem, błąd strony z retry tego samego kursora, błąd pierwszej strony, `401` dla pierwszej i kolejnej strony, `429`, `hasMore` bez kursora, deduplikacja, odświeżenie, abort, usunięcie pozycji, auto-dociągnięcie po usunięciu ostatniej, pustka po usunięciu, komunikat „już usunięta”, błąd usuwania |
 
 ### Braki
 
@@ -644,18 +671,19 @@ Kolejność rekomendowana:
 2. ~~**Walidacja i błędy**~~ — wykonane w ZR-08 dla auth i transportu; kolejne DTO dołączą własne walidatory.
 3. ~~**Konfiguracja i trwałość klucza**~~ — wykonane w ZR-10: generacja, sekret Compose tylko w backendzie, walidacja startowa, ADR-15.
 4. ~~**Kryptografia**~~ — wykonane w ZR-11 i pokryte testami jednostkowymi w ZR-12: `CryptoService` AES-256-GCM, `PackageCodec`, format pakietu, AAD, walidacja nonce/tag/długości, wektory z `docs/API.md`.
-5. ~~**Zapis, lista i odczyt wiadomości**~~ — wykonane w ZR-14; izolacja A/B i persystencja pokryte testami w ZR-16. Pozostaje endpoint usuwania oraz limity operacji crypto 60/min i 30/min.
+5. ~~**Zapis, lista i odczyt wiadomości**~~ — wykonane w ZR-14; izolacja A/B i persystencja pokryte testami w ZR-16. Usuwanie wykonane w ZR-20; pozostają limity operacji crypto 60/min i 30/min.
 6. ~~**Frontend logowania**~~ — wykonane w ZR-17: klient API, CSRF, `/me`, formularz i wylogowanie.
 7. ~~**Formularze szyfrowania i deszyfrowania**~~ — wykonane w ZR-18: sekcje encrypt/decrypt, liczniki, kopiowanie, rozdział akcji, mapowanie błędów, 401 kończący sesję i tekst bez `innerHTML`.
 8. ~~**UI listy zapisanych wiadomości**~~ — wykonane w ZR-19: paginacja kursorem, stany ładowania/pustki/błędu, retry tego samego kursora, podgląd pakietu i deszyfrowanie tylko po kliknięciu, tekst bez `innerHTML`, czyszczenie po wylogowaniu.
-9. **Usuwanie wiadomości** — `DELETE /api/messages/{id}` z owner scope, UI usuwania i potwierdzenie; następnie limitery crypto 60/30 na minutę.
-10. **E2E** — Playwright: logowanie, izolacja użytkowników, CRUD, wylogowanie, błędy walidacji i axe.
-11. **CI i wydajność** — workflow GitHub Actions, `docs/PERFORMANCE.md`, testy obciążeniowe i analiza pamięci Argon2id.
+9. ~~**Usuwanie wiadomości**~~ — wykonane w ZR-20: `DELETE /api/messages/{id}` z owner scope, potwierdzenie inline, `404` jako już usunięta, auto-dociągnięcie strony i brak resetu kursora.
+10. **Limitery crypto** — 60/min dla szyfrowania i 30/min dla deszyfrowania, z `Retry-After` i testem okna na kontrolowanym zegarze.
+11. **E2E** — Playwright: logowanie, izolacja użytkowników, CRUD, wylogowanie, błędy walidacji i axe.
+12. **CI i wydajność** — workflow GitHub Actions, `docs/PERFORMANCE.md`, testy obciążeniowe i analiza pamięci Argon2id.
 
 Warunki wejścia do kolejnego zadania:
 
 - drzewo czyste i `main == origin/main`,
-- 125/125 testów backendu i 106/106 frontendu,
+- 128/128 testów backendu i 120/120 frontendu,
 - Compose z trzema zdrowymi kontenerami,
 - dokumentacja i ADR zaktualizowane w tym samym commicie,
 - wpis do Notion z rzeczywistym hashem commita i wynikami komend.

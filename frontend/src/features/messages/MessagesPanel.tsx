@@ -21,6 +21,7 @@ type LoadMoreState =
   { status: 'idle' } | { status: 'pending' } | { status: 'error'; message: string };
 
 const CURSOR_MESSAGE = 'Nie udało się pobrać kolejnej strony. Odśwież listę i spróbuj ponownie.';
+const ALREADY_GONE_MESSAGE = 'Wiadomość była już usunięta.';
 
 function mergeItems(existing: MessageSummary[], incoming: MessageSummary[]): MessageSummary[] {
   const seen = new Set(existing.map((item) => item.id));
@@ -35,10 +36,13 @@ function paginationProblem(page: MessagePage): string | null {
 /**
  * Cursor-paginated list of the session owner's messages. The cursor advances only after a
  * successful response, so a failed page is retried with the same cursor instead of skipped.
+ * Deleting an item keeps the cursor untouched; when the last visible item disappears and the
+ * server still reports more data, the next page is loaded with that same cursor.
  */
 export function MessagesPanel({ onSessionExpired }: MessagesPanelProps) {
   const [state, setState] = useState<ListState>({ status: 'loading' });
   const [loadMore, setLoadMore] = useState<LoadMoreState>({ status: 'idle' });
+  const [notice, setNotice] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const loadMoreAlertRef = useRef<HTMLDivElement>(null);
   const onSessionExpiredRef = useRef(onSessionExpired);
@@ -97,22 +101,23 @@ export function MessagesPanel({ onSessionExpired }: MessagesPanelProps) {
 
   function reload() {
     setLoadMore({ status: 'idle' });
+    setNotice(null);
     setState({ status: 'loading' });
     setReloadKey((value) => value + 1);
   }
 
-  async function handleLoadMore() {
-    if (state.status !== 'ready' || !state.hasMore || loadMore.status === 'pending') {
+  async function loadNextPage(cursor: string | null) {
+    if (loadMore.status === 'pending') {
       return;
     }
-    if (!state.nextCursor) {
+    if (!cursor) {
       setLoadMore({ status: 'error', message: CURSOR_MESSAGE });
       return;
     }
 
     setLoadMore({ status: 'pending' });
     try {
-      const page = await listMessages({ cursor: state.nextCursor });
+      const page = await listMessages({ cursor });
       const problem = paginationProblem(page);
       if (problem) {
         setLoadMore({ status: 'error', message: problem });
@@ -139,6 +144,32 @@ export function MessagesPanel({ onSessionExpired }: MessagesPanelProps) {
     }
   }
 
+  function handleLoadMore() {
+    if (state.status !== 'ready' || !state.hasMore || loadMore.status === 'pending') {
+      return;
+    }
+    void loadNextPage(state.nextCursor);
+  }
+
+  function handleDeleted(id: string, options?: { alreadyGone?: boolean }) {
+    setNotice(options?.alreadyGone ? ALREADY_GONE_MESSAGE : null);
+    if (state.status !== 'ready') {
+      return;
+    }
+
+    const items = state.items.filter((item) => item.id !== id);
+    setState({
+      status: 'ready',
+      items,
+      nextCursor: state.nextCursor,
+      hasMore: state.hasMore,
+    });
+
+    if (items.length === 0 && state.hasMore) {
+      void loadNextPage(state.nextCursor);
+    }
+  }
+
   const busy = state.status === 'loading' || loadMore.status === 'pending';
 
   return (
@@ -159,6 +190,12 @@ export function MessagesPanel({ onSessionExpired }: MessagesPanelProps) {
         kliknięciu przycisku przy wybranej wiadomości.
       </p>
 
+      {notice ? (
+        <p className="messages-panel__notice" role="status">
+          {notice}
+        </p>
+      ) : null}
+
       {state.status === 'loading' ? (
         <p className="session-status" role="status">
           Pobieranie wiadomości…
@@ -176,7 +213,7 @@ export function MessagesPanel({ onSessionExpired }: MessagesPanelProps) {
 
       {state.status === 'ready' ? (
         <>
-          {state.items.length === 0 ? (
+          {state.items.length === 0 && !state.hasMore ? (
             <p className="messages-panel__empty">
               Nie masz jeszcze zapisanych wiadomości. Użyj sekcji „Szyfrowanie”, aby zapisać
               pierwszą.
@@ -188,6 +225,7 @@ export function MessagesPanel({ onSessionExpired }: MessagesPanelProps) {
                   key={message.id}
                   message={message}
                   onSessionExpired={onSessionExpired}
+                  onDeleted={handleDeleted}
                 />
               ))}
             </ul>

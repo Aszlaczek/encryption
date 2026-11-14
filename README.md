@@ -2,7 +2,7 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-19 — lista zapisanych wiadomości: paginacja kursorem („Pobierz więcej”), stany ładowania, pustej listy i błędu z ponowieniem tego samego kursora, podgląd pakietu i deszyfrowanie dopiero po kliknięciu przy wybranej wiadomości, kopiowanie, brak masowego pobierania plaintextu i czyszczenie widoku po wylogowaniu. Testy frontendu: **106/106**; realny smoke Playwright (izolacja A/B, błąd strony i retry, podgląd pakietu, XSS jako tekst, wylogowanie) — [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md). Backend bez zmian: **125/125**. Usuwanie wiadomości, limiter crypto 60/30 na minutę, formalne E2E, CI i `docs/PERFORMANCE.md` pozostają do wykonania.
+> **Status:** ZR-20 — usuwanie własnych wiadomości: `DELETE /api/messages/{id}` z owner scope i `204` bez ciała, cudza i nieistniejąca wiadomość dają identyczne `404`, potwierdzenie inline zamiast `window.confirm`, `404` podczas usuwania jest traktowane jako „już usunięta”, a po usunięciu ostatniej widocznej pozycji panel dociąga kolejną stronę tym samym kursorem. Backend: **128/128** (`./mvnw spotless:check verify`), frontend: **120/120** (`npm test`); curl przez nginx potwierdził `204`/`404`/`400`/`403`/`401`, a smoke Playwright usunięcie, anulowanie, `404` i brak treści w DOM — [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md). Limiter crypto 60/30 na minutę, formalne E2E, CI i `docs/PERFORMANCE.md` pozostają do wykonania.
 
 **Repozytorium:** <https://github.com/Aszlaczek/encryption>
 
@@ -168,7 +168,7 @@ node scripts/validate-api-contract.mjs
 
 | ID | Wymaganie | Planowany dowód |
 |---|---|---|
-| R01 | Frontend JavaScript z React/Angular | React 19 + Vite 7 + TypeScript 6; `npm run build` oraz **106 testów** komponentów i klienta (Vitest 5 + RTL 16 + user-event 14); realny smoke Playwright: logowanie, reload, wylogowanie, stan `401`, szyfrowanie/deszyfrowanie, kopiowanie, zapis, lista z paginacją i izolacja użytkowników; formalne E2E w kolejnym zadaniu |
+| R01 | Frontend JavaScript z React/Angular | React 19 + Vite 7 + TypeScript 6; `npm run build` oraz **120 testów** komponentów i klienta (Vitest 5 + RTL 16 + user-event 14); realny smoke Playwright: logowanie, reload, wylogowanie, stan `401`, szyfrowanie/deszyfrowanie, kopiowanie, zapis, lista z paginacją, izolacja użytkowników i usuwanie z potwierdzeniem; formalne E2E w kolejnym zadaniu |
 | R02 | Logowanie i walidacja danych | Kontrakt logowania, sesji i CSRF w `docs/API.md`; `PasswordEncoder` Argon2id (16 MiB, 2 iteracje, salt 16 B, hash 32 B); `AppUserDetailsService` i `AppUserPrincipal`; konta demo tylko w profilu `local`; endpointy `csrf`, `login`, `me`, `logout`; rotacja sesji i CSRF; limit 5 nieudanych prób/60 s z testem wygaśnięcia okna na kontrolowanym zegarze; walidacja JSON, `413`, `415` i błędy RFC 9457; 16 testów integracyjnych auth + 7 jednostkowych; izolacja sesji A/B w `MessageIsolationIntegrationTests` (10); frontend logowania: klient API, CSRF, `/me`, mapowanie `400`/`401`/`429`, 71 testów frontendu i smoke przeglądarkowy |
 | R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Spring Boot 4.1.2 / Java 17; `./mvnw verify` z Testcontainers PostgreSQL 16 i Flyway; kontrakt AES-256-GCM w `docs/API.md`; konfiguracja klucza AES-256 (`CryptoKey`, walidacja 32 B i `keyId=k1`) oraz testy startowe; `CryptoService`/`PackageCodec` z AES-256-GCM, nonce 12 B, tagiem 128 bitów, AAD `v1:<ownerId>:<keyId>`, walidacją pakietu i wektorem z dokumentacji; 49 testów jednostkowych kryptografii (round-trip Unicode/emoji/nowych linii, nonce, tag, granice); frontend: formularze szyfrowania/deszyfrowania i round-trip pakietu na tym samym koncie (smoke Playwright) |
 | R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`–`V3` (V3 tylko komentarz), ograniczenia CHECK, FK i indeks; encje `AppUser`/`Message` i repozytoria owner-scoped z zapytaniem kursorowym; 7 testów integracyjnych na Testcontainers PostgreSQL 16 (`./mvnw verify`); walidacja schematu (`./scripts/validate-schema.sh`); kontrakt CRUD i paginacji w `docs/API.md`; `MessageIsolationIntegrationTests` (10) sprawdza faktyczne wiersze, koperty i historię Flyway; frontend `features/messages` odczytuje listę, pakiet i odszyfrowaną treść wyłącznie dla bieżącego konta (smoke: 0 identyfikatorów Boba w widoku Alicji, obcy zasób `404`) |
@@ -361,17 +361,45 @@ Konta są tworzone wyłącznie przy aktywnym profilu `local` (`application-local
 | Backend — konfiguracja i walidacja klucza | JUnit 5, `ApplicationContextRunner`, `@TempDir` | `CryptoKeyTests` (10) + `CryptoKeyStartupTests` (5): poprawny klucz inline/plik, priorytet pliku, brak klucza, zły base64, 16/33 B, nieznany `keyId`, brak pliku, brak wycieku klucza w `toString`, blokada startu kontekstu |
 | Backend — AES-GCM i kodek pakietu | JUnit 5, AssertJ | `PackageCodecTests` (23) + `CryptoServiceTests` (26): wektor z `docs/API.md`, kanoniczny base64url, round-trip Unicode/emoji/spacji/nowych linii, 100 unikalnych nonce dla tego samego tekstu, tag i nonce z innego szyfrogramu, granice 40 000 B, zły AAD/klucz bez zwracania plaintextu |
 | Backend — HTTP crypto | JUnit 5, MockMvc, Testcontainers PostgreSQL 16 | `CryptoControllerIntegrationTests` (5): round-trip właściciela, 401 anonimowego klienta, `422 DECRYPT_FAILED` dla pakietu innego właściciela, `400 INVALID_PACKAGE_FORMAT`, limity DTO i `no-store` |
-| Backend — HTTP messages | JUnit 5, MockMvc, Testcontainers PostgreSQL 16 | `MessageControllerIntegrationTests` (3): zapis tylko szyfrogramu, owner-scoped list/details/decrypt, stabilny kursor, max 50, anonimowy 401, identyczne 404 dla cudzej i brakującej wiadomości |
-| Backend — izolacja użytkowników i persystencja | JUnit 5, MockMvc, Testcontainers PostgreSQL 16 | `MessageIsolationIntegrationTests` (10): lista/szczegóły/decrypt A i B, wklejony obcy pakiet, sesja i CSRF, payloady SQL injection/XSS, faktyczne wiersze bazy i historia Flyway; raport [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) |
+| Backend — HTTP messages | JUnit 5, MockMvc, Testcontainers PostgreSQL 16 | `MessageControllerIntegrationTests` (5): zapis bez plaintextu, owner-scoped list/details/decrypt/delete, stabilny kursor, max 50, anonimowy 401, identyczne 404 dla cudzej i brakującej wiadomości, `204` bez ciała |
+| Backend — izolacja użytkowników i persystencja | JUnit 5, MockMvc, Testcontainers PostgreSQL 16 | `MessageIsolationIntegrationTests` (11): lista/szczegóły/decrypt/delete A i B, wklejony obcy pakiet, sesja i CSRF, payloady SQL injection/XSS, faktyczne wiersze bazy i historia Flyway; raport [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) |
 | Backend — limiter i problem details | JUnit 5 | `LoginRateLimiterTests` (5), `AppUserPrincipalTests` (2), `ApiProblemFactoryTests` (2) |
 | Backend — format i higiena | Spotless, Enforcer | `cd backend && ./mvnw spotless:check verify` |
 | Schemat bazy i migracje | PostgreSQL 16, psql, Docker | `./scripts/validate-schema.sh` |
 | Kontrakt API i dokumentacja | Node.js, `node:crypto` | `node scripts/validate-api-contract.mjs` |
 | Frontend — klient API, logowanie, sesja i formularze crypto | Vitest 5, RTL 16, user-event 14, jsdom | `cd frontend && npm test` — 72 testy: CSRF z cookie i retry, RFC 9457, formularz logowania (etykiety, `aria-describedby`, `aria-invalid`, fokus, pending), `400`/`401`/`429`, `/me`, retry sesji, login/logout, brak zapisów do storage; limity code point/UTF-8, mapowanie błędów crypto, kopiowanie, XSS jako tekst, 401 kończący sesję |
-| Frontend — lista zapisanych wiadomości | Vitest 5, RTL 16, user-event 14, jsdom | `cd frontend && npm test` — 34 testy: kontrakt `listMessages`/`getMessage`/`decryptMessage` (GET bez CSRF, POST bez ciała, brak `ownerId`, kursor bez reinterpretacji), mapowanie błędów, paginacja i deduplikacja, retry tego samego kursora, stany ładowania/pustki/błędu, podgląd pakietu i deszyfrowanie tylko po kliknięciu, XSS jako tekst, 401 kończący sesję |
+| Frontend — lista zapisanych wiadomości | Vitest 5, RTL 16, user-event 14, jsdom | `cd frontend && npm test` — 48 testów: kontrakt `listMessages`/`getMessage`/`decryptMessage`/`deleteMessage` (GET bez CSRF, POST/DELETE bez ciała, brak `ownerId`, kursor bez reinterpretacji), mapowanie błędów i `isMissingMessage`, paginacja i deduplikacja, retry tego samego kursora, stany ładowania/pustki/błędu, podgląd pakietu i deszyfrowanie tylko po kliknięciu, usuwanie z potwierdzeniem, `404` jako już usunięte, auto-dociągnięcie strony, XSS jako tekst, 401 kończący sesję |
 | Frontend — smoke w przeglądarce | Playwright 1.64.1, Chrome, Compose | logowanie `alice` → reload → wylogowanie, `401`, cookies `HttpOnly`/`SameSite=Lax`, pusty `localStorage`/`sessionStorage`/IndexedDB; lista: jedno żądanie pierwszej strony, brak prefetchu pakietu/plaintextu, izolacja A/B, błąd strony z retry tego samego kursora, podgląd pakietu, XSS jako tekst; raport [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) |
 | Frontend — lint i format | ESLint, Prettier | `cd frontend && npm run lint && npm run format:check` |
 | Sekrety | `git grep`, `.gitignore` | `./scripts/check-secrets.sh` |
+
+Wynik ZR-20 (weryfikacja 2026-11-14; Node.js 22.19.0, npm 11.16.0, Playwright 1.64.1 + Chrome 157, Docker Compose, PostgreSQL 16.15, JDK 27.0.1):
+
+```text
+cd backend && ./mvnw spotless:check verify -> 128/128, BUILD SUCCESS
+cd frontend && npm run lint                -> OK
+cd frontend && npm run format:check        -> All matched files use Prettier code style!
+cd frontend && npm test                    -> 15 plików, 120/120 testów, PASS
+cd frontend && npm run build               -> tsc -b + vite build; JS 250.70 kB (gzip 77.08 kB), CSS 6.91 kB
+docker compose up -d --build               -> 3 kontenery healthy
+curl http://localhost:3000/actuator/health -> 200
+POST /api/messages (alice)                 -> 201, id
+DELETE /api/messages/{id} + CSRF           -> 204, puste body, Cache-Control: no-store
+GET /api/messages/{id} po usunięciu        -> 404 MESSAGE_NOT_FOUND
+DELETE tego samego id ponownie             -> 404 MESSAGE_NOT_FOUND
+DELETE cudzego id (bob → alice)            -> 404 MESSAGE_NOT_FOUND; wiersz alice nadal 200
+DELETE losowego UUID                       -> 404 MESSAGE_NOT_FOUND
+DELETE not-a-uuid                          -> 400 INVALID_MESSAGE_ID
+DELETE bez CSRF                            -> 403 CSRF_INVALID
+DELETE anonimowo                           -> 401 UNAUTHENTICATED
+psql: deleted row count / kept row count   -> 0 / 1
+smoke Playwright (Chrome, :3000)           -> PASS (21/21 kroków)
+./scripts/check-secrets.sh                 -> OK
+node scripts/validate-api-contract.mjs     -> OK (28 przykładów JSON, 12 endpointów, wektor AES-GCM)
+git diff --check                           -> OK
+```
+
+Smoke ZR-20 potwierdził: „Usuń” pokazuje potwierdzenie i nie wysyła `DELETE` przed kliknięciem „Tak, usuń”, fokus trafia na przycisk potwierdzenia, „Anuluj” zostawia pozycję bez żądania, a po potwierdzeniu `DELETE` zwraca `204`, pozycja i odszyfrowana treść znikają z DOM. Scenariusz „już usunięta” (wiersz usunięty w tle przez `fetch` z tej samej sesji) pokazuje `role="status"` „Wiadomość była już usunięta.”, usuwa pozycję i nie renderuje alertu. Po operacjach `localStorage` i `sessionStorage` są puste, a wylogowanie usuwa listę i treść z DOM. Sekwencja żądań: `POST /api/messages 201` → `GET /api/messages?limit=10 200` → `GET /api/messages/{id} 200` → `POST …/decrypt 200` → `DELETE … 204` → `POST /api/messages 201` → `DELETE … 204` (w tle) → `DELETE … 404` (UI). Szczegóły: [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md), scenariusze negatywne: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md).
 
 Wynik ZR-19 (weryfikacja 2026-11-13; Node.js 22.19.0, npm 11.16.0, Playwright 1.64.1 + Chrome, Docker Compose, PostgreSQL 16):
 
@@ -712,8 +740,8 @@ Testy negatywne obejmują w szczególności (część auth zrealizowana w ZR-08,
 - Encje JPA i repozytoria są warstwą wewnętrzną; API zwraca wyłącznie DTO i nie wolno zwracać encji bezpośrednio z kontrolerów.
 - Vite dev server proxuje `/api` i `/actuator` na `http://localhost:8080`; cel można nadpisać przez `VITE_API_PROXY_TARGET` (np. `http://localhost:3000`). W Compose pełny przepływ zapewnia nginx w jednym origin.
 - Kontrakt API jest zweryfikowany statycznie; endpointy auth, crypto i messages są pokryte testami integracyjnymi, a frontend logowania i listy wiadomości realnym smoke'em przez nginx.
-- Frontend obsługuje logowanie, sesję, CSRF i wylogowanie; lista zapisanych wiadomości z paginacją i podglądem na żądanie istnieje, a edytor i usuwanie wiadomości powstaną w kolejnych zadaniach.
-- `SecurityFilterChain`, logowanie, sesja, CSRF i limiter prób są zaimplementowane. `CryptoService` i `PackageCodec` obsługują AES-256-GCM oraz walidację pakietu. Brakuje endpointu usuwania i limitów HTTP dla szyfrowania i deszyfrowania.
+- Frontend obsługuje logowanie, sesję, CSRF i wylogowanie; lista zapisanych wiadomości z paginacją, podglądem na żądanie i usuwaniem z potwierdzeniem istnieje.
+- `SecurityFilterChain`, logowanie, sesja, CSRF i limiter prób są zaimplementowane. `CryptoService` i `PackageCodec` obsługują AES-256-GCM oraz walidację pakietu. `DELETE /api/messages/{id}` działa z owner scope; brakuje limitów HTTP dla szyfrowania i deszyfrowania.
 - Rate limiter logowania jest lokalny dla instancji i trzyma wpisy w pamięci; nie współdzieli stanu między replikami i nie jest trwały po restarcie.
 - Skrypt `check-secrets.sh` jest heurystyczny i nie zastępuje skanera historii Git.
 - OpenAPI/springdoc jest odłożone; kanonicznym dokumentem pozostaje `docs/API.md`.

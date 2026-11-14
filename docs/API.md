@@ -4,7 +4,7 @@
 > **Data:** 2026-11-04.
 > **Wymagania:** R02, R03, R04, R06.
 > **Zależności:** ZR-01 (`b1e9fbe`) i ZR-02 (`2ab856e`) — potwierdzone.
-> **Status:** kontrakt zamknięty i zweryfikowany statycznie. Endpointy crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}` i `POST /api/messages/{id}/decrypt` są zaimplementowane. Usuwanie wiadomości i limiter operacji pozostają w kolejnych zadaniach.
+> **Status:** kontrakt zamknięty i zweryfikowany statycznie. Endpointy crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt` i `DELETE /api/messages/{id}` są zaimplementowane. Limiter operacji crypto pozostaje w kolejnym zadaniu.
 
 Ten dokument jest **kanonicznym źródłem prawdy** dla kontraktu HTTP. Jeśli README, `docs/DATA_MODEL.md` lub kod są z nim sprzeczne, pierwszeństwo ma ten plik, a rozbieżność należy poprawić w tym samym commicie.
 
