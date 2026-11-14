@@ -7,6 +7,7 @@ import com.szlaczek.backend.auth.AppUser;
 import com.szlaczek.backend.auth.AppUserRepository;
 import com.szlaczek.backend.message.Message;
 import com.szlaczek.backend.message.MessageRepository;
+import com.szlaczek.backend.message.MessageRepository.MessageListRow;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -24,7 +25,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -166,8 +166,7 @@ class PersistenceIntegrationTests {
 
         assertThat(messages.findByIdAndOwner_Id(message.getId(), alice.getId())).isPresent();
         assertThat(messages.findByIdAndOwner_Id(message.getId(), bob.getId())).isEmpty();
-        assertThat(messages.findByOwner_IdOrderByCreatedAtDescIdDesc(bob.getId(), PageRequest.of(0, 10)))
-                .isEmpty();
+        assertThat(messages.findFirstPage(bob.getId(), 10)).isEmpty();
 
         assertThat(messages.deleteByIdAndOwner_Id(message.getId(), bob.getId())).isZero();
         assertThat(messages.findByIdAndOwner_Id(message.getId(), alice.getId())).isPresent();
@@ -190,26 +189,19 @@ class PersistenceIntegrationTests {
         updateCreatedAt(middle, base.plusSeconds(1));
         updateCreatedAt(newest, base.plusSeconds(2));
 
-        List<Message> firstPage = messages.findByOwner_IdOrderByCreatedAtDescIdDesc(
-                alice.getId(), PageRequest.of(0, 2));
+        List<MessageListRow> firstPage = messages.findFirstPage(alice.getId(), 2);
 
-        assertThat(firstPage).extracting(Message::getId).containsExactly(newest.getId(), middle.getId());
+        assertThat(firstPage).extracting(MessageListRow::getId).containsExactly(newest.getId(), middle.getId());
 
-        Message lastOfFirstPage = firstPage.get(1);
-        List<Message> secondPage = messages.findNextPage(
-                alice.getId(),
-                lastOfFirstPage.getCreatedAt(),
-                lastOfFirstPage.getId(),
-                PageRequest.of(0, 2));
+        MessageListRow lastOfFirstPage = firstPage.get(1);
+        List<MessageListRow> secondPage = messages.findNextPage(
+                alice.getId(), lastOfFirstPage.getCreatedAt(), lastOfFirstPage.getId(), 2);
 
-        assertThat(secondPage).extracting(Message::getId).containsExactly(oldest.getId());
+        assertThat(secondPage).extracting(MessageListRow::getId).containsExactly(oldest.getId());
 
-        Message oldestReloaded = secondPage.get(0);
+        MessageListRow oldestReloaded = secondPage.get(0);
         assertThat(messages.findNextPage(
-                alice.getId(),
-                oldestReloaded.getCreatedAt(),
-                oldestReloaded.getId(),
-                PageRequest.of(0, 2)))
+                alice.getId(), oldestReloaded.getCreatedAt(), oldestReloaded.getId(), 2))
                 .isEmpty();
     }
 

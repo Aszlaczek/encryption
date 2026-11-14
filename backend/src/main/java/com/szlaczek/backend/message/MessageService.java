@@ -6,13 +6,13 @@ import com.szlaczek.backend.crypto.CryptoException;
 import com.szlaczek.backend.crypto.CryptoService;
 import com.szlaczek.backend.crypto.EncryptedPayload;
 import com.szlaczek.backend.crypto.PackageCodec;
+import com.szlaczek.backend.message.MessageRepository.MessageListRow;
 import com.szlaczek.backend.message.api.CreateMessageRequest;
 import com.szlaczek.backend.message.api.MessagePageResponse;
 import com.szlaczek.backend.message.api.MessageResponse;
 import com.szlaczek.backend.message.api.MessageSummary;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,14 +52,13 @@ public class MessageService {
     public MessagePageResponse list(UUID ownerId, int requestedLimit, String cursorValue) {
         int limit = requestedLimit <= 0 ? DEFAULT_PAGE_SIZE : Math.min(requestedLimit, MAX_PAGE_SIZE);
         MessageCursor cursor = cursorValue == null ? null : MessageCursor.decode(cursorValue);
-        PageRequest page = PageRequest.of(0, limit + 1);
-        List<Message> rows = cursor == null
-                ? messageRepository.findByOwner_IdOrderByCreatedAtDescIdDesc(ownerId, page)
-                : messageRepository.findNextPage(ownerId, cursor.createdAt(), cursor.id(), page);
+        List<MessageListRow> rows = cursor == null
+                ? messageRepository.findFirstPage(ownerId, limit + 1)
+                : messageRepository.findNextPage(ownerId, cursor.createdAt(), cursor.id(), limit + 1);
         boolean hasMore = rows.size() > limit;
-        List<Message> visible = hasMore ? rows.subList(0, limit) : rows;
+        List<MessageListRow> visible = hasMore ? rows.subList(0, limit) : rows;
         List<MessageSummary> items = visible.stream()
-                .map(message -> new MessageSummary(message.getId(), message.getCreatedAt())).toList();
+                .map(row -> new MessageSummary(row.getId(), row.getCreatedAt())).toList();
         String nextCursor = hasMore && !visible.isEmpty()
                 ? new MessageCursor(visible.get(visible.size() - 1).getCreatedAt(),
                         visible.get(visible.size() - 1).getId()).encode()

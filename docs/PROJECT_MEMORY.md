@@ -7,7 +7,7 @@ Dokument dla przyszłych agentów i osób wracających do repozytorium po przerw
 - **Gałąź:** `main`, gotowa do push na `origin/main`
 - **Stan drzewa:** czysty po commicie
 - **Zadania ukończone:** ZR-01…ZR-22
-- **Następne zadanie:** limitery crypto 60/min i 30/min; potem CI z E2E/axe i `docs/PERFORMANCE.md`
+- **Następne zadanie:** limitery crypto 60/min i 30/min; **ZR-23: pomiary wydajności paginacji kursorem, row-value cursor optimization, raport z benchmarków**; potem CI z E2E/axe i `docs/PERFORMANCE.md`
 
 ## 1. Cel projektu
 

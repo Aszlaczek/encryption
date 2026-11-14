@@ -8,8 +8,8 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-14)
 
-- Ostatni commit funkcjonalny: `28bf7e1` (ZR-22 — testy formularzy i E2E Playwright); drzewo powinno być czyste po commicie.
-- Ukończone: ZR-01…ZR-22.
+- Ostatni commit funkcjonalny: `69e0788` (docs — dokumentacja wydajności ZR-23); drzewo powinno być czyste po commicie.
+- Ukończone: ZR-01…ZR-23.
 - Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, `DELETE /api/messages/{id}`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem; formularze szyfrowania/deszyfrowania z licznikami, kopiowaniem i rozdziałem „Szyfruj”/„Szyfruj i zapisz”; lista zapisanych wiadomości z paginacją kursorem, podglądem pakietu i deszyfrowaniem dopiero po kliknięciu; usuwanie z potwierdzeniem inline, `404` jako „już usunięta” i auto-dociąganiem strony; responsywność 320–1280 px i 200% zoomu bez przepełnienia oraz dostępność z pełnym obchodem klawiatury, powrotem fokusu, przewijalnymi wynikami i 0 naruszeń axe. Harness Playwright w `frontend/e2e/` pokrywa pełny przepływ i błędy na realnym Compose przez nginx.
 - **Nie ma jeszcze** limitera crypto 60/30 na minutę. CI z E2E/axe i `docs/PERFORMANCE.md` też są do wykonania; manualny odsłuch VoiceOver pozostaje po stronie człowieka.
 - Testy: 128/128 backendu (`./mvnw spotless:check verify`), 131/131 frontendu (`npm test`) i 8/8 E2E (`npm run test:e2e`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) (§12 — ZR-21, §13 — ZR-22).
