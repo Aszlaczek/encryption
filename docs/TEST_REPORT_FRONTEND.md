@@ -571,7 +571,7 @@ Pierwszy przebieg wykrył `scrollable-region-focusable` na `output` i `pre` (nap
 |---|---|
 | Data weryfikacji | 2026-11-14 |
 | Kod aplikacji (baseline) | `e0fd30b` (`docs(status): zamknij wpis ZR-21`); ZR-22 nie zmienia kodu produkcyjnego, tylko testy i konfigurację E2E |
-| Harness ZR-22 | commit zawierający ten raport (testy, `playwright.config.ts`, `e2e/`, dokumentacja) |
+| Harness ZR-22 | `28bf7e1` (`test(frontend): dodaj testy formularzy i E2E Playwright (ZR-22)`) — testy, `playwright.config.ts`, `e2e/`, dokumentacja |
 | System | macOS 27.0.1 (arm64), build `26A434` |
 | Node.js / npm | 22.19.0 / 11.16.0 |
 | Playwright | `@playwright/test` 1.64.1 (pin w `devDependencies`), ffmpeg v1013 |

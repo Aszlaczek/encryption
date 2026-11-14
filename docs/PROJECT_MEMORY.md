@@ -3,7 +3,7 @@
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
 - **Ostatnia aktualizacja:** 2026-11-14
-- **Ostatni commit funkcjonalny:** `46085ce` — responsywność i dostępność (ZR-21); ZR-22 dodaje testy i harness E2E
+- **Ostatni commit funkcjonalny:** `28bf7e1` — testy formularzy i E2E Playwright (ZR-22)
 - **Gałąź:** `main`, gotowa do push na `origin/main`
 - **Stan drzewa:** czysty po commicie
 - **Zadania ukończone:** ZR-01…ZR-22
@@ -94,6 +94,7 @@ Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose buduj�
 | ZR-19 | `bd0da9b` | 2026-11-13 | Lista zapisanych wiadomości: paginacja kursorem, stany ładowania/pustki/błędu, retry tego samego kursora, deduplikacja, podgląd pakietu i deszyfrowanie tylko po kliknięciu, kopiowanie, tekst bez `innerHTML`, czyszczenie po wylogowaniu | `npm run lint`, `format:check`, `npm test` — 106/106, `npm run build`; Compose 3 healthy; curl (izolacja, kursor, `404`, `INVALID_CURSOR`, limit) i smoke Playwright PASS; raport `docs/TEST_REPORT_FRONTEND.md` |
 | ZR-20 | `449e97b` | 2026-11-14 | Usuwanie własnych wiadomości: `DELETE /api/messages/{id}` z owner scope i `204`, identyczne `404` dla cudzej/nieistniejącej, potwierdzenie inline, `404` jako „już usunięta”, auto-dociągnięcie strony, brak resetu kursora, treść znika z DOM | `./mvnw spotless:check verify` — 128/128; `npm run lint`, `format:check`, `npm test` — 120/120, `npm run build`; Compose 3 healthy; curl `204`/`404`/`400`/`403`/`401`, psql 0/1; smoke Playwright 21/21 PASS; raporty `docs/TEST_REPORT.md` i `docs/TEST_REPORT_FRONTEND.md` |
 | ZR-21 | `46085ce` | 2026-11-14 | Responsywność i dostępność: tokeny fokusu, `tabIndex` na `<main>` i długich wynikach, `pre role="group"`, powrót fokusu po Anuluj/Escape/usunięciu, Escape w potwierdzeniu, unikalne nazwy akcji, mocniejsze obramowania, opis nowej karty i 4 testy | `npm run lint`, `format:check`, `npm test` — 124/124, `npm run build`; 7 viewportów × 4 stany bez przepełnienia; obchód 45 kroków Tab; axe 0 naruszeń w 6 skanach; Compose health 200; raport `docs/TEST_REPORT_FRONTEND.md` §12 i `docs/screenshots/zr21/` |
+| ZR-22 | `28bf7e1` | 2026-11-14 | 7 testów RTL (przełączenie konta, utrata sesji, błędy zapisu/deszyfrowania/sieci) oraz harness Playwright: config, globalny health check, fixtures ze sprzątaniem przez API i 8 scenariuszy na realnym Compose przez nginx; pin 1.64.1, `tsconfig.e2e.json`, wpisy `.gitignore`, ESLint i Prettier | `npm ci`, `npm run lint`, `format:check`, `npm test` — 131/131 (15 plików), `npm run build`, `npm run test:e2e` — 8/8 dwukrotnie (5,6 s i 5,5 s); Compose 3 × healthy; health 200; `messages` 32 → 32; raport `docs/TEST_REPORT_FRONTEND.md` §13 |
 
 ### ZR-01 — zakres i decyzje
 
