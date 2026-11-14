@@ -1,16 +1,18 @@
-# Raport testów frontendu — klient API, logowanie, sesja, formularze crypto, lista i usuwanie wiadomości (ZR-17/ZR-18/ZR-19/ZR-20)
+# Raport testów frontendu — klient API, logowanie, sesja, formularze crypto, lista i usuwanie wiadomości oraz responsywność i dostępność (ZR-17…ZR-21)
 
-- **Data:** 2026-11-13 (ZR-17…ZR-19), 2026-11-14 (ZR-20)
-- **Zadania:** ZR-17 — klient API i logowanie; ZR-18 — formularze szyfrowania i deszyfrowania; ZR-19 — lista zapisanych wiadomości; ZR-20 — usuwanie zapisanych wiadomości
-- **Wymagania:** R01, R02, R03, R04, R06, R08, R09
+- **Data:** 2026-11-13 (ZR-17…ZR-19), 2026-11-14 (ZR-20, ZR-21)
+- **Zadania:** ZR-17 — klient API i logowanie; ZR-18 — formularze szyfrowania i deszyfrowania; ZR-19 — lista zapisanych wiadomości; ZR-20 — usuwanie zapisanych wiadomości; ZR-21 — responsywność i dostępność
+- **Wymagania:** R01, R02, R03, R04, R06, R07, R08, R09
 - **Zależności ZR-18 potwierdzone:** ZR-13 (`7c10342`), ZR-14 (`66fce7a`), ZR-17 (`c51a319`)
 - **Zależności ZR-19 potwierdzone:** ZR-14 (`66fce7a`), ZR-17 (`c51a319`); baseline `9e9144b`
 - **Zależności ZR-20 potwierdzone:** ZR-19 (`bd0da9b`)
-- **Commit funkcjonalny ZR-17:** `c51a319`; ZR-18: `26fda0d`; ZR-19: `bd0da9b`; ZR-20: `449e97b`
+- **Zależności ZR-21 potwierdzone:** ZR-20 (`449e97b`), baseline dokumentacji `37092f3`
+- **Commit funkcjonalny ZR-17:** `c51a319`; ZR-18: `26fda0d`; ZR-19: `bd0da9b`; ZR-20: `449e97b`; ZR-21: commit funkcjonalny tego zadania
 - **Zakres kodu ZR-17:** `frontend/src/shared/api/`, `frontend/src/features/auth/`, `frontend/src/app/App.tsx`, `frontend/vite.config.ts`, `frontend/src/styles/global.css`
 - **Zakres kodu ZR-18:** `frontend/src/features/crypto/`, `frontend/src/shared/ui/CopyButton.tsx`, `frontend/src/features/auth/` (`expireSession`), `frontend/src/app/App.tsx`, `frontend/src/styles/global.css`
 - **Zakres kodu ZR-19:** `frontend/src/features/messages/`, `frontend/src/shared/format.ts`, `frontend/src/features/crypto/` (importy formattera), `frontend/src/app/App.tsx`, `frontend/src/test/backend.ts`, `frontend/src/styles/global.css`
 - **Zakres kodu ZR-20:** `frontend/src/features/messages/` (`api.ts`, `errors.ts`, `MessageListItem.tsx`, `MessagesPanel.tsx` i testy), `frontend/src/styles/global.css`
+- **Zakres kodu ZR-21:** `frontend/src/app/App.tsx`, `frontend/src/features/messages/` (`MessageListItem.tsx`, `MessagesPanel.tsx` i testy), `frontend/src/features/crypto/` (`EncryptPanel.tsx`, `DecryptPanel.tsx`), `frontend/src/styles/global.css`, `docs/screenshots/zr21/`
 
 ## 1. Środowisko
 
@@ -400,10 +402,163 @@ DELETE /api/messages/{id}            404 (UI traktuje jak sukces)
 - `handleDeleted` czyta stan z bieżącego renderu; jedno usunięcie kończy się przed kolejnym, więc nie ma równoległych usunięć w jednym panelu.
 - Auto-dociągnięcie strony to jedno dodatkowe żądanie listy wywołane akcją użytkownika, nie prefetch pakietów ani plaintextu.
 - Limiter crypto 60/30 nadal nie istnieje; mapowanie `429` jest pokryte testem jednostkowym, nie realnym limitem.
-- Brak testów responsywności i zrzutów przy 360/768/1280 px; R07 pozostaje otwarte.
+- Brak testów responsywności i zrzutów przy 360/768/1280 px; R07 pozostawało otwarte. **Uzupełnione w ZR-21 — patrz sekcja 12.**
 
 ### 11.6 Dziennik wykonania
 
 | Data | Zmiana | Uzasadnienie | Problem i rozwiązanie | Testy | Następny krok |
 |---|---|---|---|---|---|
 | 2026-11-14 | Dodano `deleteMessage`, `isMissingMessage`, potwierdzenie inline w `MessageListItem`, usuwanie pozycji i auto-dociągnięcie strony w `MessagesPanel`, style `button--danger`/potwierdzenia/komunikatu oraz 14 testów. | Realizacja R01, R04, R06, R09: trwałe usuwanie własnej wiadomości z potwierdzeniem, `404` jako osiągnięty cel, spójny kursor i brak treści w DOM. | (1) `404` przy usuwaniu nie może pokazywać alertu — dodano `isMissingMessage` i osobną ścieżkę `alreadyGone` z `role="status"`. (2) Po usunięciu ostatniej widocznej pozycji `handleLoadMore` miał nieaktualne domknięcie — panel wywołuje `loadNextPage` z kursorem ze stanu. (3) Smoke nie może szukać `id` w `body`, bo pokazuje go też sekcja wyniku szyfrowania — lokalizator `li.message-item`. | `npm run lint`, `format:check`, `npm test` 120/120, `npm run build`; curl i smoke Playwright 21/21 PASS; `check-secrets`, `validate-api-contract` i `git diff --check` OK. | Limitery crypto 60/30, potem formalne E2E, CI i `docs/PERFORMANCE.md`. |
+
+## 12. ZR-21 — responsywność i dostępność
+
+### 12.1 Środowisko
+
+| Element | Wartość |
+|---|---|
+| Data pomiarów | 2026-11-14 |
+| Baseline | `37092f3` (drzewo przed zmianami), zależność funkcjonalna `449e97b` |
+| System | macOS (arm64) |
+| Node.js / npm | 22.19.0 / 11.16.0 |
+| Playwright | 1.64.1, uruchamiany ad-hoc poza repozytorium |
+| Przeglądarka | Google Chrome 157.0.8103.51, headless; UA `HeadlessChrome/157.0.0.0` |
+| axe-core | 4.10.3 (`wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`, `best-practice`) |
+| Stos | Docker Compose: nginx + Spring Boot 4.1.2 / Java 17 + PostgreSQL 16.15 |
+| Adres | `http://localhost:3000` (jedyny publiczny port); health `200` |
+| Backend | bez zmian w ZR-21; wynik 128/128 z ZR-20 nie był ponownie uruchamiany |
+| Frontend | 15 plików, 124/124 testów; lint, format i build bez błędów |
+
+Pomiary wykonano na realnym stosie Compose i przez nginx, nie na `vite preview`. Skrypty pomiarowe i skan axe były jednorazowe (poza repozytorium); w repozytorium są zrzuty ekranu i ten raport. Formalny harness E2E/axe pozostaje osobnym zadaniem.
+
+### 12.2 Komendy i wyniki
+
+```text
+cd frontend && npm run lint          -> OK (0 błędów, 0 ostrzeżeń)
+cd frontend && npm run format:check  -> All matched files use Prettier code style!
+cd frontend && npm test              -> 15 plików, 124/124 testów, PASS
+cd frontend && npm run build         -> tsc -b + vite build; JS 251.85 kB (gzip 77.40 kB), CSS 7.37 kB (gzip 1.77 kB)
+docker compose up -d --build frontend -> kontener frontendu odtworzony i uruchomiony
+curl http://localhost:3000/actuator/health -> 200
+```
+
+### 12.3 Responsywność — pomiary i zrzuty
+
+Dla każdego stanu sprawdzono `document.documentElement.scrollWidth <= clientWidth + 1` oraz bounding boxy wszystkich widocznych elementów poza własnymi kontenerami przewijania. Wynik „0 przyciętych” oznacza brak elementu wychodzącego poza viewport.
+
+| Viewport | Stan | `scrollWidth` / `clientWidth` | Przepełnienie strony | Przycięte elementy |
+|---|---|---:|---|---:|
+| 360×800 | logowanie | 360 / 360 | nie | 0 |
+| 360×800 | lista + długi pakiet i treść | 360 / 360 | nie | 0 |
+| 360×800 | otwarte potwierdzenie usunięcia | 360 / 360 | nie | 0 |
+| 768×1024 | logowanie / lista / długi pakiet / potwierdzenie | 768 / 768 | nie | 0 |
+| 1280×800 | logowanie / lista / długi pakiet / potwierdzenie | 1280 / 1280 | nie | 0 |
+| 640×400 (odpowiednik 200% przy 1280×800) | logowanie / lista / długi pakiet / potwierdzenie | 640 / 640 | nie | 0 |
+| 320×320 (dodatkowo, odpowiednik 400% przy 1280×800) | logowanie / lista / długi pakiet / potwierdzenie | 320 / 320 | nie | 0 |
+
+Zrzuty (pełna strona, Chrome 157):
+
+- [360 px — logowanie](screenshots/zr21/zr21-360-login.png)
+- [360 px — długi pakiet i treść](screenshots/zr21/zr21-360-long-package.png)
+- [360 px — potwierdzenie usunięcia](screenshots/zr21/zr21-360-confirm.png)
+- [768 px — długi pakiet i treść](screenshots/zr21/zr21-768-long-package.png)
+- [1280 px — długi pakiet i treść](screenshots/zr21/zr21-1280-long-package.png)
+- [640×400 — odpowiednik 200% zoomu](screenshots/zr21/zr21-zoom200-640-long-package.png)
+
+**Zakres zoomu.** 200% przy oknie 1280×800 odpowiada viewportowi CSS 640×400 i taki viewport zmierzono. 360 px przy 200% daje 180 px CSS, czyli mniej niż próg reflow WCAG 2.2 (320 px CSS); ten przypadek jest poza zakresem, a 320 px CSS sprawdzono dodatkowo jako 400% przy 1280 px. Nie dodano media queries, bo pomiary nie wykazały przepełnienia — układ jednokolumnowy z `flex-wrap` i `overflow-wrap: anywhere` wystarcza od 320 px.
+
+### 12.4 Długie pakiety i treść
+
+- Plaintext testowy: 10 000 emoji = 10 000 punktów kodowych i 40 000 B UTF-8, czyli górne limity z `docs/API.md`.
+- Wygenerowany pakiet miał **53 380 znaków** (limit 56 000), a mimo to strona nie zyskała poziomego przewijania na żadnej szerokości.
+- Pakiet i treść są kontenerami przewijania: `scrollHeight` 16 992 px / 6 888 px przy `clientHeight` 286 px, `overflow: auto`, `white-space: pre-wrap`, `overflow-wrap: anywhere`.
+- Oba kontenery mają `tabIndex={0}`, więc można je przewijać strzałkami po dojściu Tabem. Wcześniej axe zgłaszał `scrollable-region-focusable` dla `<output>` i `<pre>` — po zmianie zgłoszenie zniknęło.
+- `output` zastąpiono przez `pre role="group"` z `aria-label`; dzięki temu długi pakiet nie jest implicit live regionem (`role="status"`) i nie ryzykuje odczytania dziesiątek tysięcy znaków po pojawieniu się wyniku. Nagłówki `h4` i `aria-labelledby` sekcji wyników pozostały.
+
+### 12.5 Klawiatura i fokus
+
+- Pełny obchód na 1280×800: 45 naciśnięć Tab. Kolejność: skip link → link repozytorium → „Wyloguj się” → textarea szyfrowania → „Szyfruj” → „Szyfruj i zapisz” → textarea deszyfrowania → „Odszyfruj” → „Odśwież listę” → trzy akcje każdej widocznej wiadomości → „Pobierz więcej” → `body` → skip link. Wszystkie 38 elementów interaktywnych było osiągalnych; po cyklu fokus wracał do skip linku.
+- Logowanie: 6 kroków Tab — skip link → link repozytorium → Login → Hasło → „Zaloguj się” → `body`.
+- Każdy krok obchodu miał widoczny pierścień `outline: solid 3px rgb(29, 78, 216)`; w trybie ciemnym token to `#93c5fd`. Skip link po Tabie jest widoczny, a Enter przenosi fokus na `<main id="main-content" tabIndex={-1}>` z widocznym pierścieniem.
+- Po otwarciu potwierdzenia fokus trafia na „Tak, usuń”. **Anuluj** i **Escape** zamykają grupę i wracają fokusem do przycisku „Usuń” (wcześniej fokus spadał na `body`).
+- Po udanym usunięciu fokus przechodzi na akcję „Usuń” następnej widocznej wiadomości; po usunięciu ostatniej pozycji — na nagłówek „Zapisane wiadomości” (`tabIndex={-1}`). Działa to także dla usunięcia klawiaturą (Enter), gdzie pierścień pozostaje widoczny.
+- Po rozwinięciu wyników Tab przechodzi kolejno: pakiet `pre` → „Kopiuj pakiet” → treść `pre` → „Kopiuj treść”; wszystkie elementy mają widoczny fokus.
+- Wiadomości zapisane w tej samej minucie mają identyczny czas, więc etykiety akcji zawierają dodatkowo 8 znaków identyfikatora; nazwy przycisków są unikalne.
+
+### 12.6 Czytnik ekranu i ARIA
+
+Weryfikacja programowa opiera się na drzewie dostępności Chrome (`ariaSnapshot` + role, nazwy i stany), czyli dokładnie na strukturze, którą konsumuje VoiceOver.
+
+- Landmarki: `banner` (nagłówek), `main`, `contentinfo` (stopka); brak zduplikowanych landmarków i brak regionów bez nazwy.
+- Nagłówki tworzą spójne poziomy: `h1` „Szyfrowanie wiadomości” → `h2` sesja / „Szyfrowanie i deszyfrowanie” / „Zapisane wiadomości” → `h3` panel i data wiadomości → `h4` „Pakiet wiadomości” / „Odszyfrowana treść”. Brak przeskoków poziomów.
+- 12 pustych regionów `role="status"` obsługuje komunikaty przejściowe; po otwarciu najdłuższego pakietu maksymalna długość tekstu w live regionie wynosiła **0 znaków**. Długi pakiet i treść są w `pre role="group"` z nazwą, a nie w live regionie.
+- Link zewnętrzny ma dostępną nazwę „Repozytorium projektu (otwiera się w nowej karcie)”.
+- Nazwy akcji zawierają datę i krótki identyfikator, np. „Usuń wiadomość: 14 lis 2026, 10:13, identyfikator 9742e5e2”; dzięki temu pozycje z tej samej minuty nie mają identycznych nazw.
+- **Ograniczenie:** rzeczywisty odsłuch VoiceOver nie został wykonany. `osascript -e 'application "VoiceOver" is running'` zwrócił `false`, aplikacja istnieje w `/System/Library/CoreServices/VoiceOver.app`, ale nie ma skryptowego słownika ani automatyzacji mowy w tym środowisku. Nie oznaczamy więc odsłuchu jako wykonanego — raport potwierdza drzewo dostępności, a manualny pass VoiceOver pozostaje do wykonania przez człowieka.
+
+### 12.7 Kontrast
+
+Współczynniki policzono według WCAG 2.x dla rzeczywistych kolorów computed style, z uwzględnieniem przezroczystości i tła panelu. Próg tekstu to 4,5:1, elementów UI i pierścienia fokusu — 3:1.
+
+| Element | Tryb jasny | Tryb ciemny | Próg |
+|---|---:|---:|---:|
+| Tekst podstawowy | 17,06:1 | 14,48:1 | 4,5:1 |
+| Hint pola (80% krycia) | 8,91:1 | 8,93:1 | 4,5:1 |
+| Tekst w polu (Canvas) | 17,85:1 | 15,20:1 | 4,5:1 |
+| Przycisk niebezpieczny | 5,82:1 | 8,63:1 | 4,5:1 |
+| Pierścień fokusu na stronie | 6,41:1 | 9,90:1 | 3:1 |
+| Pierścień fokusu na panelu | 6,03:1 | 9,09:1 | 3:1 |
+| Obramowanie pola (55%) | 4,00:1 | 5,25:1 | 3:1 |
+| Obramowanie przycisku secondary (55%) | 3,87:1 | 4,95:1 | 3:1 |
+
+Przed poprawką pierścień `#60a5fa` na `#f8fafc` miał ok. **2,4:1** i nie spełniał 3:1. Obramowania pól i przycisków secondary miały 35%/45% krycia i odpowiednio **2,22:1** oraz **2,88:1** w trybie jasnym. Podniesiono je do 55%, a pierścień zmieniono na token `--focus-ring`: `#1d4ed8` (jasny) i `#93c5fd` (ciemny). Axe pozostawia `color-contrast` jako `incomplete` dla `textarea` (systemowy `Canvas`) i długiego `pre`; powyższe wartości są ręcznym rozstrzygnięciem tego wyniku.
+
+### 12.8 Skan axe
+
+| Stan | Naruszenia | `incomplete` |
+|---|---:|---|
+| 1280 — logowanie, jasny | 0 | 0 |
+| 1280 — logowanie, ciemny | 0 | 0 |
+| 1280 — zalogowany, jasny | 0 | `color-contrast` dla 2 `textarea` |
+| 1280 — zalogowany, ciemny | 0 | `color-contrast` dla 2 `textarea` |
+| 1280 — długi pakiet + treść + potwierdzenie, jasny | 0 | `color-contrast` dla 2 `textarea` i 1 `pre` |
+| 360 — zalogowany, jasny | 0 | `color-contrast` dla 2 `textarea` |
+
+Pierwszy przebieg wykrył `scrollable-region-focusable` na `output` i `pre` (naprawione przez `tabIndex={0}`) oraz `aria-prohibited-attr` jako `incomplete` dla `pre[aria-label]` bez roli (naprawione przez `role="group"`). Skan axe jest uzupełnieniem pomiarów i testów, nie jedynym dowodem.
+
+### 12.9 Wprowadzone poprawki
+
+1. Tokeny `--focus-ring` (`#1d4ed8` / `#93c5fd`) i użycie ich w skip linku, linku, polach, przyciskach, `<main>` i kontenerach wyników; kontrast pierścienia ≥ 6:1.
+2. `tabIndex={-1}` na `<main>` — skip link faktycznie przenosi fokus na treść.
+3. `tabIndex={0}` i widoczny fokus na pakiecie/treści; `output` → `pre role="group"` z nazwą, bez implicit live regionu dla długiego szyfrogramu.
+4. Powrót fokusu do „Usuń” po Anuluj/Escape; Escape zamyka potwierdzenie.
+5. Po usunięciu fokus przechodzi na następną pozycję albo nagłówek listy; nie spada na `body`.
+6. Unikalne nazwy akcji dla wiadomości z tą samą minutą (krótki identyfikator).
+7. Wzmocnione obramowania pól i przycisków secondary do 55% (≥ 3,87:1).
+8. Ukryty opis „(otwiera się w nowej karcie)” dla linku z `target="_blank"`.
+9. Cztery nowe testy Vitest: Escape i powrót fokusu, pakiet/treść w porządku Tab, fokus na nagłówku po usunięciu ostatniej pozycji, unikalne nazwy przy wspólnym czasie.
+
+### 12.10 Ograniczenia
+
+- Rzeczywisty odsłuch VoiceOver nie został wykonany (brak działającej automatyzacji w środowisku); zweryfikowano drzewo dostępności, role, nazwy, stany i live regiony.
+- Skrypty pomiarowe i axe są jednorazowe, poza repozytorium; zrzuty i wyniki są w `docs/screenshots/zr21/` oraz w tym raporcie. Formalny E2E z axe pozostaje zadaniem CI/E2E.
+- 200% zoomu sprawdzono jako równoważny viewport CSS 640×400, a nie przez sterowanie zoomem przeglądarki; dla reflow jest to ta sama szerokość CSS.
+- `color-contrast` w axe pozostaje `incomplete` dla pól z `Canvas` i długiego `pre`; rozstrzygnięcie ręczne opisano w 12.7.
+- Backend nie był zmieniany w ZR-21, więc nie powtarzano pełnego `./mvnw verify`; obowiązuje wynik 128/128 z ZR-20.
+
+### 12.11 Mapowanie kryteriów akceptacji
+
+| Kryterium | Dowód |
+|---|---|
+| Brak poziomego przepełnienia od pakietów | 7 konfiguracji viewportu × 4 stany, `scrollWidth == clientWidth`, 0 przyciętych elementów; pakiet 53 380 znaków i plaintext 40 000 B |
+| 360 / 768 / 1280 px oraz 200% zoom | Tabela 12.3 i zrzuty ekranu; dodatkowo 320 px CSS |
+| Każda akcja osiągalna klawiaturą z widocznym fokusem | Obchód 45 kroków + 6 kroków logowania; pierścień 3 px przy każdym elemencie; skip link, potwierdzenie, wyniki i „Pobierz więcej” |
+| Fokus, kontrast, ARIA, długie szyfrogramy | Powrót fokusu po Anuluj/Escape/usunięciu; kontrast 12.7; drzewo ARIA 12.6; `tabIndex` i przewijanie długich wyników 12.4 |
+| Czytnik ekranu | `ariaSnapshot`, landmarki, nagłówki, live regiony i nazwy akcji; ograniczenie rzeczywistego VoiceOver opisane w 12.6 i 12.10 |
+| axe jako uzupełnienie | 6 skanów, 0 naruszeń, `incomplete` ręcznie rozstrzygnięte; wcześniejsze naruszenia naprawione |
+| Środowisko, wyniki i poprawki udokumentowane | Sekcje 12.1–12.9 oraz dziennik 12.12 |
+
+### 12.12 Dziennik wykonania
+
+| Data | Zmiana | Uzasadnienie | Problem i rozwiązanie | Testy | Następny krok |
+|---|---|---|---|---|---|
+| 2026-11-14 | Tokeny fokusu, `tabIndex` na `<main>`, wynikach i nagłówku listy, `pre role="group"`, powrót fokusu po Anuluj/Escape/usunięciu, Escape w potwierdzeniu, unikalne nazwy akcji, mocniejsze obramowania, opis nowej karty i 4 testy. | Realizacja R07/R08: brak przepełnienia, pełna obsługa klawiatury, widoczny fokus, czytelne nazwy i kontrast; axe ma 0 naruszeń. | (1) `#60a5fa` na jasnym tle miał 2,4:1 — token `#1d4ed8`. (2) `output`/`pre` przewijane bez fokusu — `tabIndex=0`. (3) `pre[aria-label]` bez roli — `role="group"`. (4) Usunięcie fokusowanego elementu zostawiało `body` — panel przenosi fokus na następną akcję/nagłówek. (5) Anuluj/Escape nie wracały fokusem — ref przycisku „Usuń”. | `npm run lint`, `format:check`, `npm test` 124/124, `npm run build`; axe 0 naruszeń w 6 skanach; brak przepełnienia w 28 pomiarach; Compose health 200. | Limitery crypto 60/30, formalne E2E/axe w CI, `docs/PERFORMANCE.md`. |

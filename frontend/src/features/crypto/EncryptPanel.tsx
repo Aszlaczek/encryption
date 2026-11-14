@@ -156,9 +156,14 @@ export function EncryptPanel({ onSessionExpired }: EncryptPanelProps) {
       {packageValue ? (
         <section className="crypto-result" aria-labelledby="encrypt-result-heading">
           <h4 id="encrypt-result-heading">Pakiet zaszyfrowany</h4>
-          <output className="crypto-result__value" aria-label="Pakiet zaszyfrowany">
+          <pre
+            className="crypto-result__value"
+            role="group"
+            aria-label="Pakiet zaszyfrowany"
+            tabIndex={0}
+          >
             {packageValue}
-          </output>
+          </pre>
           <CopyButton value={packageValue} label="Kopiuj pakiet" copiedLabel="Skopiowano pakiet" />
         </section>
       ) : null}
@@ -172,9 +177,14 @@ export function EncryptPanel({ onSessionExpired }: EncryptPanelProps) {
           <p className="crypto-result__meta">
             Zapisano: <time dateTime={saved.createdAt}>{formatDateTime(saved.createdAt)}</time>
           </p>
-          <output className="crypto-result__value" aria-label="Pakiet zapisanej wiadomości">
+          <pre
+            className="crypto-result__value"
+            role="group"
+            aria-label="Pakiet zapisanej wiadomości"
+            tabIndex={0}
+          >
             {saved.package}
-          </output>
+          </pre>
           <CopyButton
             value={saved.package}
             label="Kopiuj zapisany pakiet"

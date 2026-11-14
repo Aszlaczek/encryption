@@ -28,10 +28,11 @@ function AppLayout() {
           </p>
           <a className="app__link" href={REPOSITORY_URL} target="_blank" rel="noreferrer">
             Repozytorium projektu
+            <span className="visually-hidden"> (otwiera się w nowej karcie)</span>
           </a>
         </header>
 
-        <main id="main-content" className="app__main">
+        <main id="main-content" className="app__main" tabIndex={-1}>
           <SessionGate />
         </main>
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { formatDateTime } from '../../shared/format';
 import { CopyButton } from '../../shared/ui';
 import {
@@ -37,8 +37,11 @@ export function MessageListItem({ message, onSessionExpired, onDeleted }: Messag
   const [error, setError] = useState<string | null>(null);
   const alertRef = useRef<HTMLDivElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
 
   const formattedDate = formatDateTime(message.createdAt);
+  // Messages saved in the same minute share a timestamp, so the short id keeps action names unique.
+  const shortId = message.id.slice(0, 8);
   const packageHeadingId = `message-${message.id}-package-heading`;
   const plaintextHeadingId = `message-${message.id}-plaintext-heading`;
 
@@ -131,12 +134,26 @@ export function MessageListItem({ message, onSessionExpired, onDeleted }: Messag
     setConfirming((value) => !value);
   }
 
+  /** Closing the confirmation must not drop focus to <body>. */
+  function closeConfirm() {
+    setConfirming(false);
+    deleteButtonRef.current?.focus();
+  }
+
+  function handleConfirmKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Escape' && !pending) {
+      event.stopPropagation();
+      closeConfirm();
+    }
+  }
+
   const packageLabel = packageVisible ? 'Ukryj pakiet' : 'Pokaż pakiet';
 
   return (
-    <li className="message-item">
+    <li className="message-item" data-message-id={message.id}>
       <h3 className="message-item__heading">
         <time dateTime={message.createdAt}>{formattedDate}</time>
+        <span className="visually-hidden">, identyfikator {shortId}</span>
       </h3>
       <p className="message-item__meta">
         ID: <code>{message.id}</code>
@@ -154,7 +171,7 @@ export function MessageListItem({ message, onSessionExpired, onDeleted }: Messag
           type="button"
           onClick={handlePackage}
           disabled={pending !== null}
-          aria-label={`${packageLabel} wiadomości: ${formattedDate}`}
+          aria-label={`${packageLabel} wiadomości: ${formattedDate}, identyfikator ${shortId}`}
         >
           {pending === 'package' ? 'Pobieranie pakietu…' : packageLabel}
         </button>
@@ -163,7 +180,7 @@ export function MessageListItem({ message, onSessionExpired, onDeleted }: Messag
           type="button"
           onClick={handleDecrypt}
           disabled={pending !== null}
-          aria-label={`Odszyfruj wiadomość: ${formattedDate}`}
+          aria-label={`Odszyfruj wiadomość: ${formattedDate}, identyfikator ${shortId}`}
         >
           {pending === 'decrypt' ? 'Deszyfrowanie…' : 'Odszyfruj'}
         </button>
@@ -173,7 +190,9 @@ export function MessageListItem({ message, onSessionExpired, onDeleted }: Messag
           onClick={toggleConfirm}
           disabled={pending !== null}
           aria-expanded={confirming}
-          aria-label={`Usuń wiadomość: ${formattedDate}`}
+          aria-label={`Usuń wiadomość: ${formattedDate}, identyfikator ${shortId}`}
+          data-message-action="delete"
+          ref={deleteButtonRef}
         >
           {pending === 'delete' ? 'Usuwanie…' : 'Usuń'}
         </button>
@@ -185,6 +204,7 @@ export function MessageListItem({ message, onSessionExpired, onDeleted }: Messag
           role="group"
           aria-label="Potwierdzenie usunięcia wiadomości"
           aria-busy={pending === 'delete'}
+          onKeyDown={handleConfirmKeyDown}
         >
           <p className="message-item__confirm-text">
             Usunięcie jest trwałe i nie można go cofnąć. Kopia pakietu nadal będzie możliwa do
@@ -203,7 +223,7 @@ export function MessageListItem({ message, onSessionExpired, onDeleted }: Messag
             <button
               className="button button--secondary button--small"
               type="button"
-              onClick={() => setConfirming(false)}
+              onClick={closeConfirm}
               disabled={pending !== null}
             >
               Anuluj
@@ -221,9 +241,14 @@ export function MessageListItem({ message, onSessionExpired, onDeleted }: Messag
       {detail && packageVisible ? (
         <section className="message-result" aria-labelledby={packageHeadingId}>
           <h4 id={packageHeadingId}>Pakiet wiadomości</h4>
-          <output className="message-result__value" aria-label="Pakiet wiadomości">
+          <pre
+            className="message-result__value"
+            role="group"
+            aria-label="Pakiet wiadomości"
+            tabIndex={0}
+          >
             {detail.package}
-          </output>
+          </pre>
           <CopyButton
             value={detail.package}
             label="Kopiuj pakiet"
@@ -235,7 +260,14 @@ export function MessageListItem({ message, onSessionExpired, onDeleted }: Messag
       {plaintext !== null ? (
         <section className="message-result" aria-labelledby={plaintextHeadingId}>
           <h4 id={plaintextHeadingId}>Odszyfrowana treść</h4>
-          <pre className="message-result__value message-result__value--text">{plaintext}</pre>
+          <pre
+            className="message-result__value message-result__value--text"
+            role="group"
+            aria-label="Odszyfrowana treść"
+            tabIndex={0}
+          >
+            {plaintext}
+          </pre>
           <CopyButton value={plaintext} label="Kopiuj treść" copiedLabel="Skopiowano treść" />
         </section>
       ) : null}

@@ -57,16 +57,16 @@ describe('App', () => {
   it('links to the project repository', () => {
     render(<App />);
 
-    expect(screen.getByRole('link', { name: /repozytorium projektu/i })).toHaveAttribute(
-      'href',
-      'https://github.com/Aszlaczek/encryption',
-    );
+    const link = screen.getByRole('link', { name: /repozytorium projektu/i });
+    expect(link).toHaveAttribute('href', 'https://github.com/Aszlaczek/encryption');
+    expect(link).toHaveAccessibleName(/otwiera się w nowej karcie/i);
   });
 
   it('exposes the main landmark and skip link', () => {
     render(<App />);
 
     expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content');
+    expect(screen.getByRole('main')).toHaveAttribute('tabindex', '-1');
     expect(screen.getByRole('link', { name: /przejdź do treści/i })).toHaveAttribute(
       'href',
       '#main-content',

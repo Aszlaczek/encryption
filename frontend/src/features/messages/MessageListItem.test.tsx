@@ -194,8 +194,42 @@ describe('MessageListItem', () => {
     expect(
       screen.queryByRole('group', { name: 'Potwierdzenie usunięcia wiadomości' }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Usuń wiadomość/ })).toHaveFocus();
     expect(deleteMessageMock).not.toHaveBeenCalled();
     expect(onDeleted).not.toHaveBeenCalled();
+  });
+
+  it('closes the confirmation with Escape and returns focus to the trigger', async () => {
+    const user = userEvent.setup();
+
+    render(<MessageListItem message={message} />);
+
+    await user.click(screen.getByRole('button', { name: /Usuń wiadomość/ }));
+    expect(screen.getByRole('button', { name: 'Tak, usuń' })).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+
+    expect(
+      screen.queryByRole('group', { name: 'Potwierdzenie usunięcia wiadomości' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Usuń wiadomość/ })).toHaveFocus();
+    expect(deleteMessageMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps long package and plaintext scrollable from the keyboard', async () => {
+    const user = userEvent.setup();
+    getMessageMock.mockResolvedValue({ ...message, package: `v1.k1.nonce.${'a'.repeat(500)}.tag` });
+    decryptMessageMock.mockResolvedValue({ plaintext: 'treść '.repeat(1000) });
+
+    render(<MessageListItem message={message} />);
+
+    await user.click(screen.getByRole('button', { name: /Pokaż pakiet wiadomości/ }));
+    const packageRegion = await screen.findByRole('region', { name: 'Pakiet wiadomości' });
+    expect(packageRegion.querySelector('pre')).toHaveAttribute('tabindex', '0');
+
+    await user.click(screen.getByRole('button', { name: /Odszyfruj wiadomość/ }));
+    const plaintextRegion = await screen.findByRole('region', { name: 'Odszyfrowana treść' });
+    expect(plaintextRegion.querySelector('pre')).toHaveAttribute('tabindex', '0');
   });
 
   it('deletes only after confirmation and reports the removed id', async () => {

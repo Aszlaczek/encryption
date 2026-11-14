@@ -45,6 +45,9 @@ export function MessagesPanel({ onSessionExpired }: MessagesPanelProps) {
   const [notice, setNotice] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const loadMoreAlertRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const pendingFocusIdRef = useRef<string | null | undefined>(undefined);
   const onSessionExpiredRef = useRef(onSessionExpired);
 
   useEffect(() => {
@@ -98,6 +101,28 @@ export function MessagesPanel({ onSessionExpired }: MessagesPanelProps) {
       loadMoreAlertRef.current?.focus();
     }
   }, [loadMore]);
+
+  /**
+   * Deleting the focused row removes its buttons from the DOM. Move focus to the next row's
+   * delete action, or to the list heading when no row is left, instead of dropping it to <body>.
+   */
+  useEffect(() => {
+    const targetId = pendingFocusIdRef.current;
+    if (targetId === undefined) {
+      return;
+    }
+    pendingFocusIdRef.current = undefined;
+
+    const items = Array.from(
+      listRef.current?.querySelectorAll<HTMLElement>('[data-message-id]') ?? [],
+    );
+    const targetItem =
+      targetId === null ? undefined : items.find((item) => item.dataset.messageId === targetId);
+    const target =
+      targetItem?.querySelector<HTMLElement>('[data-message-action="delete"]') ??
+      headingRef.current;
+    target?.focus();
+  }, [state]);
 
   function reload() {
     setLoadMore({ status: 'idle' });
@@ -157,7 +182,10 @@ export function MessagesPanel({ onSessionExpired }: MessagesPanelProps) {
       return;
     }
 
+    const removedIndex = state.items.findIndex((item) => item.id === id);
     const items = state.items.filter((item) => item.id !== id);
+    const nextFocus = items[removedIndex] ?? items[removedIndex - 1];
+    pendingFocusIdRef.current = nextFocus ? nextFocus.id : null;
     setState({
       status: 'ready',
       items,
@@ -175,7 +203,14 @@ export function MessagesPanel({ onSessionExpired }: MessagesPanelProps) {
   return (
     <section className="messages-panel" aria-labelledby="messages-heading">
       <div className="messages-panel__header">
-        <h2 id="messages-heading">Zapisane wiadomości</h2>
+        <h2
+          id="messages-heading"
+          className="messages-panel__heading"
+          tabIndex={-1}
+          ref={headingRef}
+        >
+          Zapisane wiadomości
+        </h2>
         <button
           className="button button--secondary button--small"
           type="button"
@@ -219,7 +254,7 @@ export function MessagesPanel({ onSessionExpired }: MessagesPanelProps) {
               pierwszą.
             </p>
           ) : (
-            <ul className="message-list" aria-busy={loadMore.status === 'pending'}>
+            <ul className="message-list" aria-busy={loadMore.status === 'pending'} ref={listRef}>
               {state.items.map((message) => (
                 <MessageListItem
                   key={message.id}

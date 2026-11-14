@@ -52,6 +52,24 @@ describe('MessagesPanel', () => {
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it('keeps action names distinct when items share a timestamp', async () => {
+    listMessagesMock.mockResolvedValue(
+      page([
+        summary('11111111-1111-4111-8111-111111111111'),
+        summary('22222222-2222-4222-8222-222222222222'),
+      ]),
+    );
+
+    render(<MessagesPanel />);
+
+    await screen.findByText('11111111-1111-4111-8111-111111111111');
+    const packageButtons = screen.getAllByRole('button', { name: /Pokaż pakiet wiadomości/ });
+    const names = packageButtons.map((button) => button.getAttribute('aria-label'));
+
+    expect(names).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
+  });
+
   it('renders only the returned items and never fetches their content', async () => {
     listMessagesMock.mockResolvedValue(page([summary('message-a'), summary('message-b')]));
 
@@ -254,6 +272,23 @@ describe('MessagesPanel', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(listMessagesMock).toHaveBeenCalledTimes(1);
     expect(screen.getByText('To wszystkie zapisane wiadomości.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Usuń wiadomość/ })).toHaveFocus();
+  });
+
+  it('moves focus to the list heading after deleting the last row', async () => {
+    const user = userEvent.setup();
+    listMessagesMock.mockResolvedValueOnce(page([summary('message-a')]));
+    deleteMessageMock.mockResolvedValue(undefined);
+
+    render(<MessagesPanel />);
+
+    await screen.findByText('message-a');
+    const first = screen.getAllByRole('listitem')[0];
+    await user.click(within(first).getByRole('button', { name: /Usuń wiadomość/ }));
+    await user.click(within(first).getByRole('button', { name: 'Tak, usuń' }));
+
+    expect(await screen.findByText(/Nie masz jeszcze zapisanych wiadomości/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Zapisane wiadomości' })).toHaveFocus();
   });
 
   it('loads the next page when the last visible item is deleted and more data exists', async () => {

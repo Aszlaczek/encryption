@@ -124,7 +124,14 @@ export function DecryptPanel({ onSessionExpired }: DecryptPanelProps) {
       {plaintext !== null ? (
         <section className="crypto-result" aria-labelledby="decrypt-result-heading">
           <h4 id="decrypt-result-heading">Odszyfrowana treść</h4>
-          <pre className="crypto-result__value crypto-result__value--text">{plaintext}</pre>
+          <pre
+            className="crypto-result__value crypto-result__value--text"
+            role="group"
+            aria-label="Odszyfrowana treść"
+            tabIndex={0}
+          >
+            {plaintext}
+          </pre>
           <CopyButton value={plaintext} label="Kopiuj treść" copiedLabel="Skopiowano treść" />
         </section>
       ) : null}
