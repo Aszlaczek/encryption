@@ -8,11 +8,11 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-14)
 
-- Ostatni commit funkcjonalny: `46085ce` (ZR-21 — responsywność i dostępność); drzewo powinno być czyste po commicie.
-- Ukończone: ZR-01…ZR-21.
-- Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, `DELETE /api/messages/{id}`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem; formularze szyfrowania/deszyfrowania z licznikami, kopiowaniem i rozdziałem „Szyfruj”/„Szyfruj i zapisz”; lista zapisanych wiadomości z paginacją kursorem, podglądem pakietu i deszyfrowaniem dopiero po kliknięciu; usuwanie z potwierdzeniem inline, `404` jako „już usunięta” i auto-dociąganiem strony; responsywność 320–1280 px i 200% zoomu bez przepełnienia oraz dostępność z pełnym obchodem klawiatury, powrotem fokusu, przewijalnymi wynikami i 0 naruszeń axe.
-- **Nie ma jeszcze** limitera crypto 60/30 na minutę. Formalne E2E z axe w CI, CI i `docs/PERFORMANCE.md` też są do wykonania; manualny odsłuch VoiceOver pozostaje po stronie człowieka.
-- Testy: 128/128 backendu (`./mvnw spotless:check verify`), 124/124 frontendu (`npm test`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) (§12 — ZR-21).
+- Ostatni commit funkcjonalny: `46085ce` (ZR-21 — responsywność i dostępność); ZR-22 dodaje testy i harness E2E. Drzewo powinno być czyste po commicie.
+- Ukończone: ZR-01…ZR-22.
+- Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, `DELETE /api/messages/{id}`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem; formularze szyfrowania/deszyfrowania z licznikami, kopiowaniem i rozdziałem „Szyfruj”/„Szyfruj i zapisz”; lista zapisanych wiadomości z paginacją kursorem, podglądem pakietu i deszyfrowaniem dopiero po kliknięciu; usuwanie z potwierdzeniem inline, `404` jako „już usunięta” i auto-dociąganiem strony; responsywność 320–1280 px i 200% zoomu bez przepełnienia oraz dostępność z pełnym obchodem klawiatury, powrotem fokusu, przewijalnymi wynikami i 0 naruszeń axe. Harness Playwright w `frontend/e2e/` pokrywa pełny przepływ i błędy na realnym Compose przez nginx.
+- **Nie ma jeszcze** limitera crypto 60/30 na minutę. CI z E2E/axe i `docs/PERFORMANCE.md` też są do wykonania; manualny odsłuch VoiceOver pozostaje po stronie człowieka.
+- Testy: 128/128 backendu (`./mvnw spotless:check verify`), 131/131 frontendu (`npm test`) i 8/8 E2E (`npm run test:e2e`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) (§12 — ZR-21, §13 — ZR-22).
 
 ## Najpierw przeczytaj
 
@@ -20,16 +20,16 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 2. [`README.md`](README.md) — status, uruchomienie, dowody R01–R10.
 3. [`docs/API.md`](docs/API.md) — **kanoniczny** kontrakt HTTP, DTO, błędy, format pakietu, kursor.
 4. [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — schemat, mapowanie JPA, migracje, Argon2id.
-5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-23.
-6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q50 (rozstrzygnięte i otwarte).
+5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-24.
+6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q51 (rozstrzygnięte i otwarte).
 7. [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) — raport testów negatywnych ZR-16 i ZR-20 (izolacja A/B, usuwanie, persystencja, kontrola mutacyjna).
-8. [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) — testy klienta, logowania, sesji, formularzy crypto, listy i usuwania, a także responsywności i dostępności ZR-21 oraz smoke Playwright ZR-17…ZR-21.
+8. [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) — testy klienta, logowania, sesji, formularzy crypto, listy i usuwania, responsywności i dostępności ZR-21 oraz testów RTL i E2E Playwright ZR-22.
 
 Gdy dokumenty się różnią, rozstrzyga `docs/API.md` dla HTTP i `docs/DATA_MODEL.md` dla bazy. Zmiana zachowania wymaga aktualizacji dokumentu i ADR w **tym samym commicie**.
 
 ## Stack i topologia
 
-- Frontend: React 19.3.1, Vite 7.3.7, TypeScript 6.0.3, ESLint 10, Prettier 3, Vitest 5 + jsdom.
+- Frontend: React 19.3.1, Vite 7.3.7, TypeScript 6.0.3, ESLint 10, Prettier 3, Vitest 5 + jsdom, Playwright 1.64.1 (E2E).
 - Backend: Spring Boot 4.1.2, Java 17 (target), Maven wrapper 3.10.0, Flyway, JPA/Hibernate, Spring Security, BouncyCastle 1.86.
 - Baza: PostgreSQL 16; migracje `V1`–`V3`; `ddl-auto=validate`.
 - Compose: publiczny jest **tylko** `3000:80` (nginx). `backend:8080` i `db:5432` są niepublikowane; sieci `edge` i `data` (`internal: true`); wolumen `pgdata`.
@@ -45,6 +45,12 @@ cd backend && ./mvnw spotless:check verify
 # Frontend
 cd frontend && npm ci
 cd frontend && npm run lint && npm run format:check && npm run test && npm run build
+
+# E2E: wymaga Dockera, uruchomionego Compose i Chrome (albo Chromium + ffmpeg)
+docker compose up -d
+cd frontend && npm run test:e2e        # 8 scenariuszy, workers=1
+cd frontend && npx playwright install ffmpeg   # tylko gdy brak wideo/ffmpeg
+cd frontend && PW_CHANNEL=none npm run test:e2e  # Chromium zamiast Chrome
 
 # Cały stos
 ./scripts/generate-crypto-key.sh  # tylko raz; tworzy .secrets/crypto.key
@@ -151,7 +157,14 @@ docker compose exec -T db psql -U encryption -d encryption -c 'select username, 
 - **Nazwy akcji w tej samej minucie** — `createdAt` ma dokładność do minuty, więc etykiety „Pokaż/Odszyfruj/Usuń” zawierają 8 znaków `id`. Test pilnuje unikalności nazw.
 - **Odsłuch VoiceOver** — w tym środowisku nie ma automatyzacji mowy; `ariaSnapshot` i role to dowód struktury, nie odsłuchu. Nie oznaczaj testu mowy jako wykonanego bez człowieka.
 - **Treść tylko jako tekst** — wynik deszyfrowania renderuj przez `{plaintext}` w `<pre>`; nie używaj `dangerouslySetInnerHTML` ani `innerHTML`.
+- **Playwright i ffmpeg** — nagrywanie wideo wymaga `npx playwright install ffmpeg`; bez tego każdy scenariusz kończy się `Executable doesn't exist ... ffmpeg-mac`. `npm run test:e2e` wymaga Dockera, Compose i Chrome (albo `PW_CHANNEL=none` + Chromium).
+- **E2E tylko przez nginx** — testy działają na `http://localhost:3000` (`E2E_BASE_URL` nadpisuje), nigdy na `vite preview`; `globalSetup` przerywa przebieg, gdy `/actuator/health` ≠ `UP`.
+- **E2E a limiter** — test 5 + 1 prób używa unikalnego, nieistniejącego loginu; klucz limitera to IP + login, więc współdzielone konto demo zostałoby zablokowane na 60 s.
+- **Lista nie odświeża się po zapisie** — E2E klika „Odśwież listę”; nie dodawaj automatycznego refetchu tylko dla wygody testu. Sprzątanie loguje się przez API jako `alice` i usuwa wyłącznie zarejestrowane ID (`404` akceptowane).
+- **Selektory E2E** — „Odszyfruj” istnieje w formularzu i w każdej pozycji listy: używaj `exact: true` lub `/^Odszyfruj wiadomość/`. Pozycje mają `li[data-message-id]`.
+- **ESLint w `e2e/`** — `use` w fixture Playwrighta nie jest Hookiem; dla `e2e/**` wyłączone są `react-hooks/rules-of-hooks` i `no-empty-pattern`. Nie przenoś tego wyjątku na `src/`.
+- **Vitest a `e2e/*.spec.ts`** — domyślny glob Vitest łapie specy Playwrighta i `npm test` zgłasza nieudane pliki mimo zielonych testów. `test.include` w `vite.config.ts` ogranicza się do `src/**/*.{test,spec}.{ts,tsx}`; nie usuwaj tego.
 
 ## Następny krok
 
-Limitery crypto 60/min i 30/min (szyfrowanie/deszyfrowanie) z `Retry-After` i testem okna na kontrolowanym zegarze. Potem formalne testy E2E z axe w CI, CI i dokument wydajnościowy oraz manualny odsłuch VoiceOver. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).
+Limitery crypto 60/min i 30/min (szyfrowanie/deszyfrowanie) z `Retry-After` i testem okna na kontrolowanym zegarze. Potem CI z E2E i axe, `docs/PERFORMANCE.md` oraz manualny odsłuch VoiceOver. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).

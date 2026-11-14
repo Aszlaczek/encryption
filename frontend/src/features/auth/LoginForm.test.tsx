@@ -175,4 +175,20 @@ describe('LoginForm', () => {
       'Nie można połączyć się z serwerem. Sprawdź połączenie i spróbuj ponownie.',
     );
   });
+
+  it('restores the button and keeps both fields after a network failure', async () => {
+    const user = userEvent.setup();
+    loginMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    render(<LoginForm />);
+
+    await user.type(screen.getByLabelText('Login'), 'alice');
+    await user.type(screen.getByLabelText('Hasło'), 'AliceDemo123!');
+    await user.click(screen.getByRole('button', { name: 'Zaloguj się' }));
+    await screen.findByRole('alert');
+
+    expect(screen.getByRole('button', { name: 'Zaloguj się' })).toBeEnabled();
+    expect(screen.getByLabelText('Login')).toHaveValue('alice');
+    expect(screen.getByLabelText('Hasło')).toHaveValue('AliceDemo123!');
+    expect(screen.getByLabelText('Hasło')).not.toHaveAttribute('aria-invalid');
+  });
 });

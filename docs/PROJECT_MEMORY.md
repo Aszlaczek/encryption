@@ -3,11 +3,11 @@
 Dokument dla przyszłych agentów i osób wracających do repozytorium po przerwie. Opisuje cel, aktualny stan, historię wykonanych zadań, niezmienniki, pułapki i następne kroki. Nie zastępuje dokumentów kanonicznych — przy sprzeczności rozstrzygają [`API.md`](API.md) (HTTP), [`DATA_MODEL.md`](DATA_MODEL.md) (baza i JPA) oraz [`DECISIONS.md`](DECISIONS.md) (decyzje architektoniczne).
 
 - **Ostatnia aktualizacja:** 2026-11-14
-- **Ostatni commit funkcjonalny:** `46085ce` — responsywność i dostępność (ZR-21)
+- **Ostatni commit funkcjonalny:** `46085ce` — responsywność i dostępność (ZR-21); ZR-22 dodaje testy i harness E2E
 - **Gałąź:** `main`, gotowa do push na `origin/main`
 - **Stan drzewa:** czysty po commicie
-- **Zadania ukończone:** ZR-01…ZR-21
-- **Następne zadanie:** limitery crypto 60/min i 30/min; potem formalne E2E z axe w CI i `docs/PERFORMANCE.md`
+- **Zadania ukończone:** ZR-01…ZR-22
+- **Następne zadanie:** limitery crypto 60/min i 30/min; potem CI z E2E/axe i `docs/PERFORMANCE.md`
 
 ## 1. Cel projektu
 
@@ -43,14 +43,15 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 - Izolacja dwóch użytkowników i persystencja pokryte `MessageIsolationIntegrationTests` (10 testów): lista, szczegóły, deszyfrowanie zapisanej wiadomości i wklejonego pakietu, sesja, CSRF, SQL injection oraz faktyczne wiersze PostgreSQL i historia Flyway; raport w `docs/TEST_REPORT.md`.
 - Frontend logowania i wspólny klient API: `JSESSIONID` w cookie, CSRF z `XSRF-TOKEN` tylko dla mutacji, `/me` przy starcie (401 = anonim), formularz z etykietami/hintami/błędami pól, mapowanie `400`/`401`/`429`, stan oczekiwania, wylogowanie i brak danych w `localStorage`/`sessionStorage`/IndexedDB; 26 testów i smoke Playwright w `docs/TEST_REPORT_FRONTEND.md`.
 - Frontend szyfrowania i deszyfrowania: dwie sekcje (szyfrowanie, deszyfrowanie), licznik punktów kodowych i bajtów UTF-8, osobne akcje „Szyfruj” (bez zapisu) i „Szyfruj i zapisz”, pole wklejania pakietu z `trim()`, kopiowanie pakietu i odszyfrowanej treści przez Clipboard API, mapowanie `VALIDATION_FAILED`/`INVALID_PACKAGE_FORMAT`/`DECRYPT_FAILED`/`429`/`403`/sieci, `401` kończący sesję z komunikatem na formularzu logowania oraz renderowanie treści wyłącznie jako tekst (bez `innerHTML`); 71 testów frontendu i smoke Playwright w `docs/TEST_REPORT_FRONTEND.md`.
-- Frontend listy zapisanych wiadomości: `features/messages` pobiera pierwszą stronę `limit=10`, dokłada kolejne po „Pobierz więcej” z kursorem z odpowiedzi, deduplikuje po `id`, zachowuje wczytane pozycje po błędzie strony i ponawia ten sam kursor; stany ładowania, pustki i błędu mają `role="status"`/`role="alert"` i fokus na alercie. Lista pokazuje wyłącznie `id` i `createdAt`; pakiet i plaintext są pobierane dopiero po kliknięciu przy wybranej wiadomości, a treść renderowana jest jako tekst. `401` kończy sesję przez `onSessionExpired`, a `App` montuje panel z `key={state.user.id}`, więc wylogowanie i zmiana konta czyszczą listę oraz odszyfrowaną treść. Łącznie 124 testy frontendu i smoke Playwright w `docs/TEST_REPORT_FRONTEND.md`.
+- Frontend listy zapisanych wiadomości: `features/messages` pobiera pierwszą stronę `limit=10`, dokłada kolejne po „Pobierz więcej” z kursorem z odpowiedzi, deduplikuje po `id`, zachowuje wczytane pozycje po błędzie strony i ponawia ten sam kursor; stany ładowania, pustki i błędu mają `role="status"`/`role="alert"` i fokus na alercie. Lista pokazuje wyłącznie `id` i `createdAt`; pakiet i plaintext są pobierane dopiero po kliknięciu przy wybranej wiadomości, a treść renderowana jest jako tekst. `401` kończy sesję przez `onSessionExpired`, a `App` montuje panel z `key={state.user.id}`, więc wylogowanie i zmiana konta czyszczą listę oraz odszyfrowaną treść. Łącznie 131 testów frontendu i 8 scenariuszy E2E w `docs/TEST_REPORT_FRONTEND.md` §12–§13.
 - Usuwanie własnych wiadomości: `DELETE /api/messages/{id}` usuwa wiersz przez `deleteByIdAndOwner_Id`, a `0` trafień daje `404 MESSAGE_NOT_FOUND`; sukces to `204` bez ciała i `no-store`. UI wymaga potwierdzenia inline, traktuje `404` jako „już usunięta” (`role="status"`), nie resetuje kursora i dociąga kolejną stronę, gdy usunięto ostatnią widoczną pozycję przy `hasMore=true`. Bez migracji i bez zmian schematu; skopiowany wcześniej pakiet pozostaje ważny.
 - Responsywność i dostępność: 7 konfiguracji viewportu (360/768/1280 px, 640×400 jako 200% zoomu i dodatkowo 320×320) × 4 stany bez poziomego przepełnienia i bez przyciętych elementów, także przy pakiecie 53 380 znaków i plaintextcie 10 000 emoji. Pełny obchód klawiatury (45 kroków, 38 kontrolek) z widocznym pierścieniem `outline: solid 3px`; skip link przenosi fokus na `<main tabIndex={-1}>`; Anuluj/Escape wracają do „Usuń”, a po usunięciu fokus trafia na następną pozycję lub nagłówek listy. Długie wyniki są `pre role="group" tabIndex={0}` przewijalne z klawiatury i nie tworzą live regionu. Kontrast pierścienia 6,41:1 (jasny) / 9,90:1 (ciemny), a axe-core 4.10.3 dał 0 naruszeń w 6 skanach. Zrzuty i raport w `docs/screenshots/zr21/` oraz `docs/TEST_REPORT_FRONTEND.md` §12.
+- Testy formularzy i E2E: 7 nowych testów RTL (przełączenie alice → bob czyści listę i treść, utrata sesji w `App`, błędy zapisu `429`/`401`, błędy deszyfrowania `429`/sieć, powrót formularza logowania po błędzie sieci) oraz 8 scenariuszy Playwright na realnym stosie Compose przez nginx: pełny przepływ logowanie–szyfrowanie–zapis–odczyt–wylogowanie, walidacja, złe dane, limit 5+1 prób z `Retry-After`, utrata sesji, XSS jako dosłowny tekst (0 `img`/`script`, flagi `window` `undefined`) i przełączenie konta z pustym storage oraz `422` dla obcego pakietu. Harness jest w `frontend/e2e/` i `frontend/playwright.config.ts`, a raport w `docs/TEST_REPORT_FRONTEND.md` §13.
 
 ### Jeszcze nie istnieje
 
 - limity szyfrowania/deszyfrowania (60/min i 30/min),
-- formalne testy E2E z axe w CI (skan ZR-21 był jednorazowy, poza repozytorium),
+- CI z formalnym E2E i axe (harness E2E działa lokalnie; workflow GitHub Actions jeszcze nie ma),
 - `docs/PERFORMANCE.md`,
 - manualny odsłuch VoiceOver (drzewo dostępności jest zweryfikowane, mowy nie automatyzowano),
 - rotacja kluczy i obsługa wielu aktywnych kluczy.
@@ -60,8 +61,8 @@ Frontend ma polski interfejs (React + Vite + TypeScript), backend to Spring Boot
 | Warstwa | Liczba | Uruchomienie |
 |---|---:|---|
 | Backend (JUnit 5, Testcontainers PostgreSQL 16) | 128 | `cd backend && ./mvnw spotless:check verify` |
-| Frontend (Vitest + Testing Library) | 124 | `cd frontend && npm test` |
-| E2E | 0 | brak |
+| Frontend (Vitest + Testing Library) | 131 | `cd frontend && npm test` |
+| E2E (Playwright 1.64.1 + Chrome 157, Compose) | 8 | `cd frontend && npm run test:e2e` |
 
 Backend potrzebuje uruchomionego Dockera (Testcontainers). Obrazy Compose budują się z `-DskipTests`, więc testy trzeba uruchomić osobno.
 
@@ -441,6 +442,15 @@ axe-core 4.10.3                     -> 0 naruszeń w 6 skanach
 kontrast pierścienia                -> 6,41:1 jasny / 9,90:1 ciemny
 ```
 
+### ZR-22 — testy formularzy i scenariusze E2E
+
+- Dodano 7 testów RTL bez duplikowania istniejących: przełączenie `alice` → `bob` w `App` (lista i plaintext alice znikają, `key={state.user.id}` montuje panel od nowa), utrata sesji przy deszyfrowaniu (powrót do logowania z `EXPIRED_SESSION_NOTICE`), nieudany zapis `429`/`401` w `EncryptPanel`, `429` i błąd sieci w `DecryptPanel` oraz powrót formularza logowania po błędzie sieci z zachowanym loginem i hasłem. Frontend ma 131 testów.
+- Dodano pierwszy w repozytorium harness Playwright: `frontend/playwright.config.ts`, `frontend/e2e/global-setup.ts` (szybka porażka, gdy health ≠ `UP` z instrukcją `docker compose up -d`), `frontend/e2e/fixtures.ts` (logowanie, zapis, pakiet, deszyfrowanie, unikalne markery, sprzątanie przez API) i 8 scenariuszy. Skrypty: `npm run test:e2e` i `test:e2e:report`; `tsconfig.e2e.json` włącza E2E do `tsc -b`, a artefakty są ignorowane.
+- E2E działa wyłącznie przez nginx (`http://localhost:3000`), nie przez `vite preview`, bo tylko wtedy `JSESSIONID`, rotacja CSRF i cookies zachowują się jak w przeglądarce. Testy są serializowane (`workers: 1`), nie współdzielą `storageState` i logują się realnie w każdym kontekście.
+- Scenariusze: pełny przepływ (osobne „Szyfruj”, zapis, odświeżenie listy, pakiet, deszyfrowanie w formularzu i na liście, reload, logout), walidacja pustych i zbyt długich formularzy, zły format pakietu, błędne dane na unikalnym loginie, 5 × `401` + `429` z `Retry-After`, utrata cookie `JSESSIONID`, XSS `<img onerror>`/`<script>` jako tekst bez wykonania, przełączenie alice → bob bez ID/treści alice i z `422` dla wklejonego obcego pakietu.
+- Weryfikacja: `npm run lint`, `format:check`, `npm test` 131/131, `npm run build`, `npm run test:e2e` 8/8 dwa razy (5,5–5,6 s), Compose 3 × healthy, health `200`; liczba wierszy `messages` przed i po przebiegu 32 → 32, więc teardown działa.
+- Ograniczenia: E2E wymaga Dockera, Compose i Chrome (lub Chromium + ffmpeg); scenariusze korzystają z kont demo profilu `local`; test limitera pozostawia własny unikalny klucz na 60 s; backend nie był zmieniany, więc `./mvnw verify` nie był ponownie uruchamiany (obowiązuje 128/128 z ZR-20). Szczegóły i mapowanie kryteriów: `docs/TEST_REPORT_FRONTEND.md` §13.
+
 ## 4. Architektura i układ repozytorium
 
 ```text
@@ -576,33 +586,43 @@ AAD:    v1:<ownerId>:<keyId>
 | `ApiProblemFactoryTests` | 2 | RFC 9457, `traceId`, `instance`, lista błędów pól |
 | `PasswordEncoderConfigTests` | 1 | parametry Argon2id, długość 97, dopasowanie poprawnego i błędnego hasła, sól, hasło 128 B |
 
-### Frontend — 124 testy
+### Frontend — 131 testów
 
 | Plik | Liczba | Co sprawdza |
 |---|---:|---|
 | `src/shared/api/client.test.ts` | 8 | brak CSRF dla GET, token z cookie dla POST, pobranie `/api/auth/csrf`, parsowanie RFC 9457/`Retry-After`, fallback dla nie-JSON, jednorazowy retry po `CSRF_INVALID`, `204` |
-| `src/features/auth/LoginForm.test.tsx` | 8 | etykiety/hinty, `aria-describedby` i `aria-invalid`, blokada pustego submita, trim loginu bez trimowania hasła, stan pending, `400`/`401`/`429`, błąd sieci, fokus na błędzie |
+| `src/features/auth/LoginForm.test.tsx` | 9 | etykiety/hinty, `aria-describedby` i `aria-invalid`, blokada pustego submita, trim loginu bez trimowania hasła, stan pending, `400`/`401`/`429`, błąd sieci z przywróconym przyciskiem i zachowanymi polami, fokus na błędzie |
 | `src/features/auth/AuthProvider.test.tsx` | 8 | `/me` 200/401/500 z retry, login i brak `ownerId`, logout `204`/`401`/`500`, `401` z crypto kończący sesję, pusty storage i brak hasła w cookies |
-| `src/app/App.test.tsx` | 5 | nagłówek, link do repozytorium, landmark `main` i skip link, zalogowany widok z crypto i pustą listą (jedno `GET /api/messages?limit=10`, brak `owner`), wylogowanie czyszczące listę i plaintext |
+| `src/app/App.test.tsx` | 7 | nagłówek, link do repozytorium, landmark `main` i skip link, zalogowany widok z crypto i pustą listą (jedno `GET /api/messages?limit=10`, brak `owner`), wylogowanie czyszczące listę i plaintext, przełączenie alice → bob bez danych poprzedniego konta, utrata sesji przy chronionym żądaniu z komunikatem i powrotem do logowania |
 | `src/shared/ui/CopyButton.test.tsx` | 3 | kopiowanie i status, odrzucenie clipboardu, brak Clipboard API |
 | `src/features/crypto/limits.test.ts` | 7 | punkty kodowe vs UTF-16, bajty UTF-8, puste/blank, granice 10 000/40 000 B i 56 000 znaków |
 | `src/features/crypto/api.test.ts` | 4 | ciała `{plaintext}`/`{package}`, CSRF, `201`, brak `ownerId` |
 | `src/features/crypto/messages.test.ts` | 8 | sieć, `401`, błąd pola, `detail`, format vs `DECRYPT_FAILED`, `429`, `403`, `5xx` |
-| `src/features/crypto/EncryptPanel.test.tsx` | 11 | etykiety i licznik, pusty submit, wynik jako tekst, osobny zapis, pending, błąd pola, `429`, `401`, sieć, kopiowanie |
-| `src/features/crypto/DecryptPanel.test.tsx` | 9 | etykiety, pusty submit, `trim()`, XSS jako tekst, zły format, `DECRYPT_FAILED`, `401`, pending, kopiowanie treści |
+| `src/features/crypto/EncryptPanel.test.tsx` | 13 | etykiety i licznik, pusty submit, wynik jako tekst, osobny zapis, pending, błąd pola, `429`, `401`, sieć, kopiowanie, `429` przy zapisie z zachowanym tekstem, `401` przy zapisie kończący sesję |
+| `src/features/crypto/DecryptPanel.test.tsx` | 11 | etykiety, pusty submit, `trim()`, XSS jako tekst, zły format, `DECRYPT_FAILED`, `401`, pending, kopiowanie treści, `429` z `Retry-After`, błąd sieci |
 | `src/features/crypto/CryptoWorkspace.test.tsx` | 1 | obie sekcje i pola widoczne jednocześnie |
 | `src/features/messages/api.test.ts` | 8 | `limit=10`, kursor bez reinterpretacji, `AbortSignal`, szczegóły po `id`, decrypt POST bez ciała z CSRF, delete DELETE bez ciała i z CSRF, `204`, `encodeURIComponent`, brak `ownerId` |
 | `src/features/messages/errors.test.ts` | 8 | sieć, `401`, `404`/`INVALID_MESSAGE_ID`, `INVALID_CURSOR`, `429`, `403`, `MESSAGE_UNDECRYPTABLE` vs `500`, `isMissingMessage` |
 | `src/features/messages/MessageListItem.test.tsx` | 17 | brak pobierania przy renderze, pakiet po kliknięciu i kopiowanie, ukrycie bez refetchu, decrypt na żądanie, XSS jako tekst, kopiowanie treści, pending, `404`/`MESSAGE_UNDECRYPTABLE` z fokusem, `401` kończący sesję, potwierdzenie i anulowanie z powrotem fokusu, Escape zamykający potwierdzenie, sukces `onDeleted`, blokada akcji, `404` jako już usunięta, błąd zachowujący pozycję, `401` przy usuwaniu, przewijalne z klawiatury pakiet i treść |
 | `src/features/messages/MessagesPanel.test.tsx` | 19 | ładowanie i pustka, brak prefetchu, kolejna strona z kursorem, błąd strony z retry tego samego kursora, błąd pierwszej strony, `401` dla pierwszej i kolejnej strony, `429`, `hasMore` bez kursora, deduplikacja, odświeżenie, abort, usunięcie pozycji z fokusem na następnej, auto-dociągnięcie po usunięciu ostatniej, pustka po usunięciu, fokus na nagłówku po usunięciu ostatniej, komunikat „już usunięta”, błąd usuwania, unikalne nazwy akcji przy wspólnym czasie |
 
+### E2E — 8 scenariuszy Playwright
+
+| Plik | Liczba | Co sprawdza |
+|---|---:|---|
+| `e2e/flow.spec.ts` | 1 | logowanie `alice`, „Szyfruj” bez zapisu, „Szyfruj i zapisz”, odświeżenie listy, pakiet po kliknięciu, deszyfrowanie w formularzu i na liście, cookies `JSESSIONID`, reload, wylogowanie i anonimowy reload |
+| `e2e/errors.spec.ts` | 5 | puste i zbyt długie formularze, zły format pakietu, błędne dane logowania na unikalnym loginie, 5 × `401` + `429` z `Retry-After`, utrata cookie sesji z powrotem do logowania |
+| `e2e/security.spec.ts` | 2 | XSS `<img onerror>`/`<script>` jako dosłowny tekst bez wykonania, przełączenie alice → bob bez danych poprzedniego konta, `422` dla obcego pakietu i pusty storage |
+
+Harness: `frontend/playwright.config.ts`, `frontend/e2e/global-setup.ts`, `frontend/e2e/fixtures.ts`; uruchamiany przez `npm run test:e2e` na realnym stosie Compose przez nginx. Szczegóły w `docs/TEST_REPORT_FRONTEND.md` §13.
+
 ### Braki
 
-- Brak formalnego harness E2E (Playwright) i axe w CI; skan axe ZR-21 był jednorazowy, poza repozytorium.
+- Brak CI (`.github/workflows` nie istnieje); E2E i axe w CI są nadal do zrobienia, choć harness E2E działa lokalnie.
 - Brak manualnego odsłuchu VoiceOver; zweryfikowano drzewo dostępności.
-- Brak CI (`.github/workflows` nie istnieje).
 - Brak `docs/PERFORMANCE.md`.
 - Brak testów wydajnościowych i przeciążeniowych.
+- Brak limiterów operacji crypto 60/min i 30/min.
 
 ## 9. Decyzje i otwarte kwestie
 
@@ -625,10 +645,14 @@ AAD:    v1:<ownerId>:<keyId>
 | ADR-18 | Walidacja i problem details | Punkty kodowe i bajty UTF-8, stabilne kody pól, brak odbicia wejścia, `no-store`, `X-Request-Id` |
 | ADR-19 | Klient API i sesja SPA | Sesja wyłącznie w cookie `JSESSIONID`, CSRF z cookie, brak `localStorage`, jednorazowy retry `CSRF_INVALID`, `/me` 401 = anonim |
 | ADR-20 | Formularze crypto w SPA | Dwie sekcje, rozdział szyfrowania od zapisu, tekst bez `innerHTML`, kopiowanie przez Clipboard API, pomocnicza walidacja klienta, 401 kończy sesję z komunikatem |
+| ADR-21 | Lista zapisanych wiadomości | Paginacja kursorem, lista tylko `id`/`createdAt`, pakiet i plaintext dopiero po kliknięciu, deduplikacja, `key={user.id}` |
+| ADR-22 | Usuwanie własnych wiadomości | Twarde `DELETE`, `204`, identyczne `404` dla cudzej i nieistniejącej, potwierdzenie inline, `404` jako „już usunięta”, kursor bez zmian |
+| ADR-23 | Responsywność i dostępność | 320–1280 px i 200% zoomu bez przepełnienia, token `--focus-ring`, fokus po akcjach, przewijalne wyniki, axe 0 naruszeń |
+| ADR-24 | Testy E2E w Playwright | Realny stos Compose przez nginx, `workers: 1`, globalny health check, sprzątanie przez API, unikalne markery, brak współdzielonego `storageState` |
 
 ### Otwarte kwestie
 
-`docs/OPEN_QUESTIONS.md` zawiera Q01–Q47. Ostatnie przyjęte ustalenia:
+`docs/OPEN_QUESTIONS.md` zawiera Q01–Q51. Ostatnie przyjęte ustalenia:
 
 - Q06 — polityka haseł demo i parametry Argon2id,
 - Q32 — migracje `V1`–`V3` i seed w warstwie aplikacji,
@@ -636,7 +660,11 @@ AAD:    v1:<ownerId>:<keyId>
 - Q44 — źródło i profil kont demo,
 - Q45 — logowanie, sesja, CSRF i limiter,
 - Q46 — sesja i CSRF w SPA (cookie-only, brak storage),
-- Q47 — formularze szyfrowania i deszyfrowania (ADR-20).
+- Q47 — formularze szyfrowania i deszyfrowania (ADR-20),
+- Q48 — lista zapisanych wiadomości (ADR-21),
+- Q49 — usuwanie wiadomości (ADR-22),
+- Q50 — responsywność i dostępność (ADR-23),
+- Q51 — testy E2E Playwright (ADR-24).
 
 Przed rozpoczęciem nowego zadania sprawdź, czy nie ma otwartego pytania dotyczącego jego zakresu.
 
@@ -698,6 +726,14 @@ Te zasady wynikają z ADR i nie powinny być zmieniane bez nowej decyzji:
 31. **Token pierścienia fokusu.** `#60a5fa` na jasnym tle miał ok. 2,4:1. Używaj `var(--focus-ring)` (`#1d4ed8` jasny, `#93c5fd` ciemny) i nie przywracaj jasnoniebieskiego pierścienia bez ponownego pomiaru kontrastu. Obramowania pól/przycisków secondary wymagają ≥ 55% krycia.
 32. **Nazwy akcji w tej samej minucie.** Data `createdAt` z dokładnością do minuty nie wystarcza do unikalnych nazw dostępnych. Etykiety zawierają 8 znaków `id`; test pilnuje, że nazwy dwóch pozycji z tym samym czasem są różne.
 33. **Rzeczywisty odsłuch VoiceOver.** W tym środowisku nie ma skryptowej automatyzacji mowy (`osascript -e 'application "VoiceOver" is running'` zwraca `false`). `ariaSnapshot`, role, nazwy i live regiony to dowód struktury, nie dowód odsłuchu — nie oznaczaj testu mowy jako wykonanego bez człowieka.
+34. **Playwright wymaga ffmpeg.** Nagrywanie wideo (`video: 'retain-on-failure'`) potrzebuje osobnego binarium; bez `npx playwright install ffmpeg` każdy scenariusz kończy się `Executable doesn't exist ... ffmpeg-mac`. Samo `npx playwright install chrome` nie wystarcza.
+35. **E2E tylko przez nginx.** Testy muszą działać na `http://localhost:3000` (Compose), nie na `vite preview`, bo tylko wtedy `JSESSIONID`, `SameSite`, domena cookie i rotacja CSRF są takie jak u użytkownika. `globalSetup` przerywa przebieg, gdy `/actuator/health` nie zwraca `UP`.
+36. **E2E a limiter.** Test 5 + 1 prób używa unikalnego, nieistniejącego loginu, bo klucz limitera to IP + login — współdzielone konto demo zostałoby zablokowane na 60 s i psuło kolejne scenariusze.
+37. **Lista nie odświeża się po zapisie.** `EncryptPanel` nie zna listy; E2E musi kliknąć „Odśwież listę”. Nie dodawaj automatycznego refetchu tylko po to, żeby uprościć test.
+38. **Sprzątanie E2E.** Teardown loguje się niezależnie przez API jako `alice` i usuwa wyłącznie ID zarejestrowane przez scenariusz; 404 jest akceptowane. Dzięki temu liczba wierszy `messages` przed i po przebiegu jest identyczna (32 → 32).
+39. **Selektory E2E.** Przyciski „Odszyfruj” występują w formularzu i w każdej pozycji listy — używaj `exact: true` lub nazw z prefiksem (`/^Odszyfruj wiadomość/`). Pozycje listy mają `li[data-message-id]`.
+40. **ESLint a fixture Playwrighta.** `use` w fixture nie jest Hookiem Reacta, a pusty wzorzec `{}` jest tam poprawny; dla `e2e/**` wyłączono `react-hooks/rules-of-hooks` i `no-empty-pattern`. Nie przenoś tego wyjątku na `src/`.
+41. **Vitest łapie `.spec.ts` z `e2e/`.** Domyślny glob Vitest obejmuje `**/*.spec.ts`, więc po dodaniu Playwrighta `npm test` raportował 3 nieudane pliki mimo 131 przechodzących testów. `vite.config.ts` ma teraz `test.include: ['src/**/*.{test,spec}.{ts,tsx}']`; nie usuwaj tego zawężenia.
 
 ## 12. Następne kroki
 
@@ -713,17 +749,18 @@ Kolejność rekomendowana:
 8. ~~**UI listy zapisanych wiadomości**~~ — wykonane w ZR-19: paginacja kursorem, stany ładowania/pustki/błędu, retry tego samego kursora, podgląd pakietu i deszyfrowanie tylko po kliknięciu, tekst bez `innerHTML`, czyszczenie po wylogowaniu.
 9. ~~**Usuwanie wiadomości**~~ — wykonane w ZR-20: `DELETE /api/messages/{id}` z owner scope, potwierdzenie inline, `404` jako już usunięta, auto-dociągnięcie strony i brak resetu kursora.
 10. ~~**Responsywność i dostępność**~~ — wykonane w ZR-21: pomiary 360/768/1280 px i 200% zoomu, pełny obchód klawiatury, powrót fokusu, przewijalne wyniki, kontrast, axe 0 naruszeń i zrzuty w `docs/screenshots/zr21/`.
-11. **Limitery crypto** — 60/min dla szyfrowania i 30/min dla deszyfrowania, z `Retry-After` i testem okna na kontrolowanym zegarze.
-12. **E2E** — Playwright: logowanie, izolacja użytkowników, CRUD, wylogowanie, błędy walidacji i axe (formalny harness, nie skrypt jednorazowy).
-13. **CI i wydajność** — workflow GitHub Actions, `docs/PERFORMANCE.md`, testy obciążeniowe i analiza pamięci Argon2id.
+11. ~~**E2E**~~ — wykonane w ZR-22: harness Playwright w `frontend/e2e/`, 8 scenariuszy na realnym Compose przez nginx (pełny przepływ, walidacja, błędne dane, limiter, utrata sesji, XSS, przełączenie konta) oraz 7 testów RTL; raport §13.
+12. **Limitery crypto** — 60/min dla szyfrowania i 30/min dla deszyfrowania, z `Retry-After` i testem okna na kontrolowanym zegarze.
+13. **CI i wydajność** — workflow GitHub Actions (backend, frontend, E2E, axe), `docs/PERFORMANCE.md`, testy obciążeniowe i analiza pamięci Argon2id.
+14. **Odsłuch VoiceOver** — manualny, po stronie człowieka; struktura drzewa dostępności jest już zweryfikowana.
 
 Warunki wejścia do kolejnego zadania:
 
 - drzewo czyste i `main == origin/main`,
-- 128/128 testów backendu i 124/124 frontendu,
+- 128/128 testów backendu, 131/131 frontendu i 8/8 E2E,
 - Compose z trzema zdrowymi kontenerami,
 - dokumentacja i ADR zaktualizowane w tym samym commicie,
-- wpis do Notion z rzeczywistym hashem commita i wynikami komend.
+- wpis do Notion z rzeczywistym hashem commita i wynikami komend (jeśli dostępny kanał).
 
 ## 13. Jak utrzymywać ten dokument
 

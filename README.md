@@ -2,7 +2,7 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-21 — responsywność i dostępność: sprawdzono 360/768/1280 px, 200% zoom (równoważne 640×400 CSS) i dodatkowo 320 px CSS; brak poziomego przepełnienia przy pakiecie **53 380 znaków** i plaintext 10 000 emoji, pełny obchód klawiatury z widocznym pierścieniem 3 px, powrót fokusu po Anuluj/Escape/usunięciu, przewijalne z klawiatury wyniki i **0 naruszeń axe** w 6 skanach. Backend: **128/128** (bez zmian w ZR-21), frontend: **124/124** (`npm test`). Zrzuty i pełne wyniki: [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) (sekcja 12) oraz [`docs/screenshots/zr21/`](docs/screenshots/zr21/). Limiter crypto 60/30 na minutę, formalne E2E/axe w CI i `docs/PERFORMANCE.md` pozostają do wykonania.
+> **Status:** ZR-22 — testy formularzy i E2E: **131/131** testów frontendu (7 nowych RTL) oraz **8/8** scenariuszy Playwright na realnym Compose przez nginx (pełny przepływ logowanie–szyfrowanie–zapis–odczyt–wylogowanie, walidacja, błędne dane, 5×401 + 429, utrata sesji, XSS jako tekst, przełączenie konta). Backend: **128/128** (bez zmian w ZR-22). Wcześniej ZR-21 dał 0 naruszeń axe i brak przepełnienia 320–1280 px przy 200% zoomu. Limiter crypto 60/30, CI z E2E/axe i `docs/PERFORMANCE.md` pozostają do wykonania. Raporty: [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) (§12 — ZR-21, §13 — ZR-22).
 
 **Repozytorium:** <https://github.com/Aszlaczek/encryption>
 
@@ -168,12 +168,12 @@ node scripts/validate-api-contract.mjs
 
 | ID | Wymaganie | Planowany dowód |
 |---|---|---|
-| R01 | Frontend JavaScript z React/Angular | React 19 + Vite 7 + TypeScript 6; `npm run build` oraz **124 testy** komponentów i klienta (Vitest 5 + RTL 16 + user-event 14); realny smoke Playwright: logowanie, reload, wylogowanie, stan `401`, szyfrowanie/deszyfrowanie, kopiowanie, zapis, lista z paginacją, izolacja użytkowników, usuwanie z potwierdzeniem oraz obchód klawiatury i pomiary responsywności; formalne E2E w kolejnym zadaniu |
-| R02 | Logowanie i walidacja danych | Kontrakt logowania, sesji i CSRF w `docs/API.md`; `PasswordEncoder` Argon2id (16 MiB, 2 iteracje, salt 16 B, hash 32 B); `AppUserDetailsService` i `AppUserPrincipal`; konta demo tylko w profilu `local`; endpointy `csrf`, `login`, `me`, `logout`; rotacja sesji i CSRF; limit 5 nieudanych prób/60 s z testem wygaśnięcia okna na kontrolowanym zegarze; walidacja JSON, `413`, `415` i błędy RFC 9457; 16 testów integracyjnych auth + 7 jednostkowych; izolacja sesji A/B w `MessageIsolationIntegrationTests` (11); frontend logowania: klient API, CSRF, `/me`, mapowanie `400`/`401`/`429`, 71 testów frontendu i smoke przeglądarkowy |
-| R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Spring Boot 4.1.2 / Java 17; `./mvnw verify` z Testcontainers PostgreSQL 16 i Flyway; kontrakt AES-256-GCM w `docs/API.md`; konfiguracja klucza AES-256 (`CryptoKey`, walidacja 32 B i `keyId=k1`) oraz testy startowe; `CryptoService`/`PackageCodec` z AES-256-GCM, nonce 12 B, tagiem 128 bitów, AAD `v1:<ownerId>:<keyId>`, walidacją pakietu i wektorem z dokumentacji; 49 testów jednostkowych kryptografii (round-trip Unicode/emoji/nowych linii, nonce, tag, granice); frontend: formularze szyfrowania/deszyfrowania i round-trip pakietu na tym samym koncie (smoke Playwright) |
-| R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`–`V3` (V3 tylko komentarz), ograniczenia CHECK, FK i indeks; encje `AppUser`/`Message` i repozytoria owner-scoped z zapytaniem kursorowym; 7 testów integracyjnych na Testcontainers PostgreSQL 16 (`./mvnw verify`); walidacja schematu (`./scripts/validate-schema.sh`); kontrakt CRUD i paginacji w `docs/API.md`; `MessageIsolationIntegrationTests` (11) sprawdza faktyczne wiersze, koperty i historię Flyway; frontend `features/messages` odczytuje listę, pakiet i odszyfrowaną treść wyłącznie dla bieżącego konta (smoke: 0 identyfikatorów Boba w widoku Alicji, obcy zasób `404`) |
+| R01 | Frontend JavaScript z React/Angular | React 19 + Vite 7 + TypeScript 6; `npm run build` oraz **131 testów** komponentów i klienta (Vitest 5 + RTL 16 + user-event 14); **8 scenariuszy Playwright** w repozytorium (`frontend/e2e/`): pełny przepływ logowanie–szyfrowanie–zapis–odczyt–wylogowanie, walidacja, błędne dane, limit prób, utrata sesji, XSS jako tekst i przełączenie konta, na realnym Compose przez nginx; wcześniejsze smoke’y ZR-17…ZR-21 pozostają w historii |
+| R02 | Logowanie i walidacja danych | Kontrakt logowania, sesji i CSRF w `docs/API.md`; `PasswordEncoder` Argon2id (16 MiB, 2 iteracje, salt 16 B, hash 32 B); `AppUserDetailsService` i `AppUserPrincipal`; konta demo tylko w profilu `local`; endpointy `csrf`, `login`, `me`, `logout`; rotacja sesji i CSRF; limit 5 nieudanych prób/60 s z testem wygaśnięcia okna na kontrolowanym zegarze; walidacja JSON, `413`, `415` i błędy RFC 9457; 16 testów integracyjnych auth + 7 jednostkowych; izolacja sesji A/B w `MessageIsolationIntegrationTests` (11); frontend logowania: klient API, CSRF, `/me`, mapowanie `400`/`401`/`429`, 131 testów frontendu, a E2E pokazuje błędne dane, 5 × `401` + `429` z `Retry-After` oraz powrót do logowania po utracie sesji |
+| R03 | Backend Java/Spring; szyfrowanie i deszyfrowanie | Spring Boot 4.1.2 / Java 17; `./mvnw verify` z Testcontainers PostgreSQL 16 i Flyway; kontrakt AES-256-GCM w `docs/API.md`; konfiguracja klucza AES-256 (`CryptoKey`, walidacja 32 B i `keyId=k1`) oraz testy startowe; `CryptoService`/`PackageCodec` z AES-256-GCM, nonce 12 B, tagiem 128 bitów, AAD `v1:<ownerId>:<keyId>`, walidacją pakietu i wektorem z dokumentacji; 49 testów jednostkowych kryptografii (round-trip Unicode/emoji/nowych linii, nonce, tag, granice); frontend: formularze szyfrowania/deszyfrowania, E2E „Szyfruj” bez zapisu, pakiet `v1.` i round-trip na tym samym koncie |
+| R04 | Zapis i odczyt zaszyfrowanych wiadomości | Migracje `V1`–`V3` (V3 tylko komentarz), ograniczenia CHECK, FK i indeks; encje `AppUser`/`Message` i repozytoria owner-scoped z zapytaniem kursorowym; 7 testów integracyjnych na Testcontainers PostgreSQL 16 (`./mvnw verify`); walidacja schematu (`./scripts/validate-schema.sh`); kontrakt CRUD i paginacji w `docs/API.md`; `MessageIsolationIntegrationTests` (11) sprawdza faktyczne wiersze, koperty i historię Flyway; frontend `features/messages` odczytuje listę, pakiet i odszyfrowaną treść wyłącznie dla bieżącego konta; E2E: zapis → lista → pakiet po kliknięciu → deszyfrowanie → reload → wylogowanie, a sprzątanie przywraca liczbę wierszy (32 → 32) |
 | R05 | Uruchomienie lokalne w Dockerze | Trzy usługi Compose z healthcheckami; jednorazowa generacja klucza (`./scripts/generate-crypto-key.sh`) → `docker compose up -d --build` kończy się `healthy`; sekret jest montowany tylko do backendu; tylko `3000:80` jest publiczne; backend łączy się z `db:5432`; wolumen `encryption_pgdata` przeżywa restart |
-| R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Macierz statusów, katalog kodów, `404` dla obcych zasobów i limity w `docs/API.md`; `SecurityFilterChain` z kolejnością `401` przed `403`; CSRF wymagany dla logowania i mutacji zalogowanych; odrzucanie nieznanych pól JSON; limit rozmiaru żądania; `Cache-Control: no-store` i `X-Request-Id`; walidacja klucza przy starcie i brak sekretu w Git/obrazie; testy integracyjne błędów, walidacji, `413`/`415`, `429` i izolacji sesji; testy kryptografii potwierdzają odrzucenie zmienionego AAD (obcy właściciel), tagu i klucza bez ujawnienia plaintextu; `MessageIsolationIntegrationTests` (11) potwierdza brak plaintextu A w sesji B, `404` dla obcych zasobów, CSRF oraz odrzucenie payloadów SQL injection/XSS — raport w [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) |
+| R06 | Walidacja, błędy, SQL injection, XSS, kontrola dostępu | Macierz statusów, katalog kodów, `404` dla obcych zasobów i limity w `docs/API.md`; `SecurityFilterChain` z kolejnością `401` przed `403`; CSRF wymagany dla logowania i mutacji zalogowanych; odrzucanie nieznanych pól JSON; limit rozmiaru żądania; `Cache-Control: no-store` i `X-Request-Id`; walidacja klucza przy starcie i brak sekretu w Git/obrazie; testy integracyjne błędów, walidacji, `413`/`415`, `429` i izolacji sesji; testy kryptografii potwierdzają odrzucenie zmienionego AAD (obcy właściciel), tagu i klucza bez ujawnienia plaintextu; `MessageIsolationIntegrationTests` (11) potwierdza brak plaintextu A w sesji B, `404` dla obcych zasobów, CSRF oraz odrzucenie payloadów SQL injection/XSS; E2E potwierdza XSS `<img onerror>`/`<script>` jako dosłowny tekst bez wykonania (0 elementów `img`/`script`, flagi `window` `undefined`), `422` dla pakietu alice w sesji bob i pusty storage po przełączeniu konta — raport w [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) |
 | R07 | Responsywność | Zmierzone 4 stany (logowanie, lista, długi pakiet i treść, potwierdzenie usunięcia) na 7 konfiguracjach: 360×800, 768×1024, 1280×800, 640×400 (200% zoomu), dodatkowo 320×320 (400%); wszędzie `scrollWidth == clientWidth` i 0 przyciętych elementów; pakiet 53 380 znaków i plaintext 40 000 B bez przepełnienia; zrzuty w [`docs/screenshots/zr21/`](docs/screenshots/zr21/); szczegóły w [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) §12.3 |
 | R08 | Dostępność | Landmarki `banner`/`main`/`contentinfo`, spójne `h1`→`h4`, skip link przenoszący fokus na `<main tabIndex={-1}>`, pełny obchód klawiatury (38 kontrolek, pierścień `outline: solid 3px`), Escape/Anuluj i usunięcie z powrotem fokusu, długie wyniki w `pre role="group" tabIndex={0}` przewijalne z klawiatury, 12 pustych live regionów bez treści szyfrogramu, unikalne nazwy akcji; kontrast tekstu 17,06:1/14,48:1 i pierścienia 6,41:1/9,90:1; **0 naruszeń axe 4.10.3** w 6 skanach; rzeczywisty odsłuch VoiceOver opisany jako ograniczenie w §12.6/§12.10 |
 | R09 | Wydajność | Paginacja kursorem w API i w UI (`limit=10`, „Pobierz więcej”, kursor przekazywany bez reinterpretacji), indeks `(owner_id, created_at desc, id desc)`, limity; lista pobiera wyłącznie `id`/`createdAt`, a pakiet i plaintext dopiero po kliknięciu; pomiary `hey` i `EXPLAIN ANALYZE` w `docs/PERFORMANCE.md` (do wykonania) |
@@ -208,6 +208,7 @@ Wersje są przypięte dokładnie: `package.json` bez zakresów `^`/`~`, `package
 | ESLint | 10.14.0 | flat config, `typescript-eslint` 8.72.1 |
 | Prettier | 3.9.10 | konfiguracja w `frontend/.prettierrc.json` |
 | Vitest / jsdom | 5.1.0 / 29.0.0 | dokładne wersje |
+| Playwright | 1.64.1 | `@playwright/test` w `devDependencies`; `channel: 'chrome'`, `PW_CHANNEL=none` dla Chromium; ffmpeg v1013 do wideo |
 | Java (target) | 17 | `java.version` i `release 17` |
 | JDK lokalny | 27.0.1 | Spring Boot 4.1.2 wspiera Javę 17–27 |
 | Spring Boot | 4.1.2 | parent w `backend/pom.xml` |
@@ -367,14 +368,45 @@ Konta są tworzone wyłącznie przy aktywnym profilu `local` (`application-local
 | Backend — format i higiena | Spotless, Enforcer | `cd backend && ./mvnw spotless:check verify` |
 | Schemat bazy i migracje | PostgreSQL 16, psql, Docker | `./scripts/validate-schema.sh` |
 | Kontrakt API i dokumentacja | Node.js, `node:crypto` | `node scripts/validate-api-contract.mjs` |
-| Frontend — klient API, logowanie, sesja i formularze crypto | Vitest 5, RTL 16, user-event 14, jsdom | `cd frontend && npm test` — 72 testy: CSRF z cookie i retry, RFC 9457, formularz logowania (etykiety, `aria-describedby`, `aria-invalid`, fokus, pending), `400`/`401`/`429`, `/me`, retry sesji, login/logout, brak zapisów do storage; limity code point/UTF-8, mapowanie błędów crypto, kopiowanie, XSS jako tekst, 401 kończący sesję |
+| Frontend — klient API, logowanie, sesja i formularze crypto | Vitest 5, RTL 16, user-event 14, jsdom | `cd frontend && npm test` — 79 testów: CSRF z cookie i retry, RFC 9457, formularz logowania (etykiety, `aria-describedby`, `aria-invalid`, fokus, pending, błąd sieci), `400`/`401`/`429`, `/me`, retry sesji, login/logout, przełączenie kont i utrata sesji, brak zapisów do storage; limity code point/UTF-8, mapowanie błędów crypto, kopiowanie, XSS jako tekst, 401 kończący sesję, błędy zapisu i deszyfrowania |
 | Frontend — lista zapisanych wiadomości | Vitest 5, RTL 16, user-event 14, jsdom | `cd frontend && npm test` — 52 testy: kontrakt `listMessages`/`getMessage`/`decryptMessage`/`deleteMessage` (GET bez CSRF, POST/DELETE bez ciała, brak `ownerId`, kursor bez reinterpretacji), mapowanie błędów i `isMissingMessage`, paginacja i deduplikacja, retry tego samego kursora, stany ładowania/pustki/błędu, podgląd pakietu i deszyfrowanie tylko po kliknięciu, usuwanie z potwierdzeniem i powrót fokusu (Anuluj/Escape/następny wiersz/nagłówek), przewijalne z klawiatury wyniki, unikalne nazwy akcji, `404` jako już usunięte, auto-dociągnięcie strony, XSS jako tekst, 401 kończący sesję |
 | Frontend — dostępność i responsywność | Playwright 1.64.1 + Chrome 157, axe-core 4.10.3, Compose | `npm test` oraz pomiary ad-hoc: 7 viewportów × 4 stany bez przepełnienia, obchód 45 kroków Tab + 6 kroków logowania z widocznym fokusem, `ariaSnapshot` (landmarki, nagłówki, live regiony), kontrast WCAG, 6 skanów axe z 0 naruszeń; wyniki i zrzuty w §12 raportu i `docs/screenshots/zr21/` |
 | Frontend — smoke w przeglądarce | Playwright 1.64.1, Chrome, Compose | logowanie `alice` → reload → wylogowanie, `401`, cookies `HttpOnly`/`SameSite=Lax`, pusty `localStorage`/`sessionStorage`/IndexedDB; lista: jedno żądanie pierwszej strony, brak prefetchu pakietu/plaintextu, izolacja A/B, błąd strony z retry tego samego kursora, podgląd pakietu, XSS jako tekst; raport [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) |
+| E2E — pełny przepływ i błędy | Playwright 1.64.1 + Chrome 157, Compose przez nginx | `cd frontend && npm run test:e2e` — 8/8: logowanie–szyfrowanie–zapis–odczyt–wylogowanie, puste i zbyt długie formularze, zły format pakietu, błędne dane, 5 × `401` + `429`, utrata sesji, XSS jako tekst, przełączenie alice → bob; raport §13 |
+| Docker — czysty start | Docker Compose, healthchecki | `docker compose down -v && docker compose up -d --build` |
+| Wydajność | `hey`, `EXPLAIN ANALYZE` | opis w `docs/PERFORMANCE.md` (do wykonania) |
+| CI | GitHub Actions | workflow w `.github/workflows/ci.yml` (do wykonania) |
 | Frontend — lint i format | ESLint, Prettier | `cd frontend && npm run lint && npm run format:check` |
 | Sekrety | `git grep`, `.gitignore` | `./scripts/check-secrets.sh` |
 
-Wynik ZR-21 (weryfikacja 2026-11-14; Node.js 22.19.0, npm 11.16.0, Playwright 1.64.1 + Chrome 157.0.8103.51, axe-core 4.10.3, Docker Compose, PostgreSQL 16.15):
+Wynik ZR-22 (weryfikacja 2026-11-14; macOS 27.0.1 arm64, Node.js 22.19.0, npm 11.16.0, Playwright 1.64.1 + ffmpeg v1013, Chrome 157.0.8103.51, Docker 29.9.1 / Compose 5.6.0, PostgreSQL 16.15; baseline kodu `e0fd30b`, backend bez zmian):
+
+```text
+cd frontend && npm ci                    -> OK, 246 pakietów, audyt 247
+cd frontend && npm run lint              -> OK (0 błędów, 0 ostrzeżeń)
+cd frontend && npm run format:check      -> All matched files use Prettier code style!
+cd frontend && npm test                  -> 15 plików, 131/131 PASS (2,16 s)
+cd frontend && npm run build             -> tsc -b + vite build; JS 251.85 kB (gzip 77.40 kB), CSS 7.37 kB
+cd frontend && npm run test:e2e          -> 8/8 PASS (5,6 s), drugi przebieg 8/8 PASS (5,5 s)
+docker compose ps                        -> backend, db, frontend: 3 × healthy
+curl http://localhost:3000/actuator/health -> 200
+./scripts/check-secrets.sh               -> OK, brak sekretów w trackowanych plikach
+git diff --check                         -> OK
+docker compose exec -T db psql ...       -> messages: 32 przed i 32 po przebiegu E2E
+```
+
+Zakres ZR-22:
+
+```text
+RTL +7                                   -> App (przełączenie alice → bob, utrata sesji), EncryptPanel (429 i 401 zapisu),
+                                            DecryptPanel (429 z Retry-After, sieć), LoginForm (błąd sieci)
+Playwright 8 scenariuszy                 -> flow, walidacja, zły format, błędne dane, 5×401 + 429, utrata sesji, XSS, przełączenie konta
+XSS <img onerror> + <script>             -> dosłowny tekst, 0 elementów img/script, window.__xssPwned undefined
+przełączenie alice → bob                 -> 0 ID/treści alice, obcy pakiet 422, localStorage/sessionStorage/IndexedDB puste
+sprzątanie E2E                           -> osobne logowanie API, usuwane tylko zarejestrowane ID; 404 akceptowane
+```
+
+
 
 ```text
 cd frontend && npm run lint          -> OK
@@ -558,10 +590,6 @@ uszkodzony pakiet                                     -> 400 INVALID_PACKAGE_FOR
 10 001 punktów kodowych                               -> 400 VALIDATION_FAILED
 10 000 emoji (40 000 B UTF-8)                         -> 200
 ```
-| E2E i dostępność | Playwright, axe | `cd frontend && npx playwright test` (kolejne zadanie) |
-| Docker — czysty start | Docker Compose, healthchecki | `docker compose down -v && docker compose up -d --build` |
-| Wydajność | `hey`, `EXPLAIN ANALYZE` | opis w `docs/PERFORMANCE.md` |
-| CI | GitHub Actions | workflow w `.github/workflows/ci.yml` (kolejne zadanie) |
 
 Wynik ZR-12 (weryfikacja 2026-11-08; JDK 27.0.1, Maven 3.10.0, Docker 29.9.1, Testcontainers 2.0.5, PostgreSQL 16.15):
 
@@ -827,6 +855,9 @@ Pełne uzasadnienia, konsekwencje i odrzucone alternatywy: [`docs/DECISIONS.md`]
 │   ├── .dockerignore
 │   ├── package.json / package-lock.json
 │   ├── eslint.config.js / .prettierrc.json
+│   ├── playwright.config.ts  # E2E: Compose przez nginx, Chrome, workers 1
+│   ├── tsconfig.e2e.json     # typy E2E w tsc -b
+│   ├── e2e/                  # global-setup, fixtures i 8 scenariuszy Playwright
 │   ├── src/
 │   │   ├── app/              # App.tsx, main.tsx, testy
 │   │   ├── features/

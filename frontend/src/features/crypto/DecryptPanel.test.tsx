@@ -153,4 +153,34 @@ describe('DecryptPanel', () => {
     expect(writeText).toHaveBeenCalledWith('tajna treść');
     expect(screen.getByText('Skopiowano treść')).toBeInTheDocument();
   });
+
+  it('shows the Retry-After value for 429', async () => {
+    const user = userEvent.setup();
+    decryptMock.mockRejectedValue(
+      new ApiError(429, 'RATE_LIMITED', 'Zbyt wiele.', { retryAfterSeconds: 4 }),
+    );
+    render(<DecryptPanel />);
+
+    fillPackage('v1.k1.nonce.cipher.tag');
+    await user.click(screen.getByRole('button', { name: 'Odszyfruj' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Zbyt wiele operacji. Spróbuj ponownie za 4 s.');
+    expect(alert).toHaveFocus();
+    expect(screen.getByLabelText('Pakiet do odszyfrowania')).toHaveValue('v1.k1.nonce.cipher.tag');
+  });
+
+  it('reports a network failure', async () => {
+    const user = userEvent.setup();
+    decryptMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    render(<DecryptPanel />);
+
+    fillPackage('v1.k1.nonce.cipher.tag');
+    await user.click(screen.getByRole('button', { name: 'Odszyfruj' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Nie można połączyć się z serwerem. Sprawdź połączenie i spróbuj ponownie.',
+    );
+    expect(screen.queryByRole('region', { name: 'Odszyfrowana treść' })).not.toBeInTheDocument();
+  });
 });

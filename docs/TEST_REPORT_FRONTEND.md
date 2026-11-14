@@ -562,3 +562,106 @@ Pierwszy przebieg wykrył `scrollable-region-focusable` na `output` i `pre` (nap
 | Data | Zmiana | Uzasadnienie | Problem i rozwiązanie | Testy | Następny krok |
 |---|---|---|---|---|---|
 | 2026-11-14 | Tokeny fokusu, `tabIndex` na `<main>`, wynikach i nagłówku listy, `pre role="group"`, powrót fokusu po Anuluj/Escape/usunięciu, Escape w potwierdzeniu, unikalne nazwy akcji, mocniejsze obramowania, opis nowej karty i 4 testy. | Realizacja R07/R08: brak przepełnienia, pełna obsługa klawiatury, widoczny fokus, czytelne nazwy i kontrast; axe ma 0 naruszeń. | (1) `#60a5fa` na jasnym tle miał 2,4:1 — token `#1d4ed8`. (2) `output`/`pre` przewijane bez fokusu — `tabIndex=0`. (3) `pre[aria-label]` bez roli — `role="group"`. (4) Usunięcie fokusowanego elementu zostawiało `body` — panel przenosi fokus na następną akcję/nagłówek. (5) Anuluj/Escape nie wracały fokusem — ref przycisku „Usuń”. | `npm run lint`, `format:check`, `npm test` 124/124, `npm run build`; axe 0 naruszeń w 6 skanach; brak przepełnienia w 28 pomiarach; Compose health 200. | Limitery crypto 60/30, formalne E2E/axe w CI, `docs/PERFORMANCE.md`. |
+
+## 13. ZR-22 — testy formularzy i scenariusze E2E
+
+### 13.1 Środowisko i wersja kodu
+
+| Element | Wartość |
+|---|---|
+| Data weryfikacji | 2026-11-14 |
+| Kod aplikacji (baseline) | `e0fd30b` (`docs(status): zamknij wpis ZR-21`); ZR-22 nie zmienia kodu produkcyjnego, tylko testy i konfigurację E2E |
+| Harness ZR-22 | commit zawierający ten raport (testy, `playwright.config.ts`, `e2e/`, dokumentacja) |
+| System | macOS 27.0.1 (arm64), build `26A434` |
+| Node.js / npm | 22.19.0 / 11.16.0 |
+| Playwright | `@playwright/test` 1.64.1 (pin w `devDependencies`), ffmpeg v1013 |
+| Przeglądarka | Google Chrome 157.0.8103.51, `channel: 'chrome'`, headless |
+| Docker / Compose | 29.9.1 / v5.6.0 |
+| PostgreSQL | 16.15 (`aarch64-unknown-linux-musl`) |
+| Stos | Compose: nginx + Spring Boot 4.1.2 / Java 17 + PostgreSQL 16; 3 kontenery `healthy` |
+| Adres E2E | `http://localhost:3000` (jedyny publiczny port, przez nginx) |
+| Backend | bez zmian w ZR-22; wynik 128/128 z ZR-20 nie był ponownie uruchamiany |
+| Frontend | 15 plików, 131/131 testów Vitest; 8 scenariuszy Playwright |
+
+E2E korzysta z realnego stosu Compose przez nginx, a nie z `vite preview`, żeby faktycznie przećwiczyć `JSESSIONID` (`HttpOnly`, `SameSite=Lax`), rotację CSRF i właściciela z sesji. Przed uruchomieniem wymagane są `docker compose up -d` oraz zainstalowany Chrome (albo `npx playwright install chromium` i `PW_CHANNEL=none`).
+
+### 13.2 Komendy i wyniki
+
+```text
+cd frontend && npm ci                         -> OK (pin 1.64.1 w package-lock.json)
+cd frontend && npm run lint                   -> OK (0 błędów, 0 ostrzeżeń)
+cd frontend && npm run format:check           -> All matched files use Prettier code style!
+cd frontend && npm test                       -> 15 plików, 131/131 testów, PASS (2,16 s)
+cd frontend && npm run build                  -> tsc -b + vite build; JS 251.85 kB (gzip 77.40 kB), CSS 7.37 kB (gzip 1.77 kB)
+docker compose ps                             -> backend, db, frontend: healthy
+curl http://localhost:3000/actuator/health    -> 200
+cd frontend && npm run test:e2e               -> 8/8, PASS (5,6 s; drugi przebieg 5,5 s)
+docker compose exec -T db psql ... count(*)   -> messages: 32 przed i 32 po przebiegu E2E
+```
+
+Dwa kolejne przebiegi E2E dały ten sam wynik 8/8. Liczba wierszy w tabeli `messages` nie zmieniła się (32 → 32), co potwierdza, że teardown usuwa wiadomości utworzone przez scenariusze. Artefakty Playwrighta (`test-results/`, `playwright-report/`, `blob-report/`) są ignorowane przez Git.
+
+### 13.3 Nowe testy RTL/Vitest (7)
+
+| Plik | Przypadek | Co potwierdza |
+|---|---|---|
+| `src/app/App.test.tsx` | przełączenie alice → bob | Po wylogowaniu i zalogowaniu na bob lista i odszyfrowana treść alice znikają; panel jest montowany od nowa przez `key={state.user.id}`; storage pozostaje pusty |
+| `src/app/App.test.tsx` | utrata sesji przy chronionym żądaniu | `401` z deszyfrowania wraca do logowania z `Sesja wygasła. Zaloguj się ponownie.`; lista i identyfikatory znikają |
+| `src/features/crypto/EncryptPanel.test.tsx` | nieudany zapis (`429`) | Alert z `Retry-After`, tekst pozostaje w polu, przycisk wraca do stanu aktywnego, brak regionu „Wiadomość zapisana” |
+| `src/features/crypto/EncryptPanel.test.tsx` | zapis `401` | Komunikat sesji i wywołanie `onSessionExpired`, brak fałszywego sukcesu |
+| `src/features/crypto/DecryptPanel.test.tsx` | `429` | Alert z `Retry-After`, pakiet pozostaje w polu, fokus na alercie |
+| `src/features/crypto/DecryptPanel.test.tsx` | błąd sieci | Komunikat połączenia i brak regionu z odszyfrowaną treścią |
+| `src/features/auth/LoginForm.test.tsx` | błąd sieci | Przycisk wraca do stanu aktywnego, login i hasło pozostają, brak `aria-invalid` |
+
+Łącznie frontend: 131 testów (było 124). Testy nie duplikują istniejących przypadków `400`/`401`/`429`, pending, CSRF retry ani XSS — uzupełniają brakujące ścieżki zapisu, deszyfrowania i przełączenia konta.
+
+### 13.4 Scenariusze Playwright (8)
+
+| Plik / scenariusz | Kroki i asercje |
+|---|---|
+| `flow.spec.ts` — pełny przepływ | Logowanie `alice` → „Szyfruj” bez zapisu (pakiet `v1.`) → „Szyfruj i zapisz” → „Odśwież listę” → pozycja o przechwyconym ID → pakiet pobrany dopiero po „Pokaż pakiet” → deszyfrowanie w formularzu i na liście daje identyczny marker → cookies `JSESSIONID` `HttpOnly`, `SameSite=Lax`, bez `Secure` na HTTP → reload utrzymuje sesję i listę, ale nie odszyfrowaną treść → wylogowanie usuwa pozycję i cookie → reload pozostaje anonimowy |
+| `errors.spec.ts` — walidacja | Puste pola szyfrowania i deszyfrowania, fokus na polu, 10 001 znaków odrzucone bez zapisu |
+| `errors.spec.ts` — zły format | `nie-pakiet` daje komunikat o formacie zamiast deszyfrowania |
+| `errors.spec.ts` — błędne dane | Unikalny login nieistniejącego konta → `Nieprawidłowy login lub hasło.`, hasło wyczyszczone, login zachowany |
+| `errors.spec.ts` — limit prób | 5 × `401` na unikalnym loginie, 6. próba → `429` z `Retry-After` w komunikacie; klucz limitera (IP + login) nie blokuje `alice`/`bob` |
+| `errors.spec.ts` — utrata sesji | Usunięcie cookie `JSESSIONID` → „Odśwież listę” → powrót do logowania z komunikatem, bez listy i przycisku wylogowania |
+| `security.spec.ts` — XSS | Zapis `<img onerror>` + `<script>` → deszyfrowanie zwraca dosłowny tekst; 0 elementów `img`/`script` w pozycji i 0 `img` na stronie; `window.__xssPwned` i `window.__xssPwned2` pozostają `undefined` |
+| `security.spec.ts` — przełączenie konta | `alice` zapisuje marker i pakiet → wylogowanie → `bob` nie widzi ID ani treści alice; wklejony pakiet alice daje `422` z komunikatem „…z tego konta…” (AAD właściciela); `localStorage`, `sessionStorage` i IndexedDB puste |
+
+Harness: `frontend/playwright.config.ts` (baseURL z `E2E_BASE_URL`, `channel` z `PW_CHANNEL`, `workers: 1`, `fullyParallel: false`, trace/screenshot/video przy błędzie), `frontend/e2e/global-setup.ts` (szybka porażka z instrukcją, gdy health ≠ `UP`) oraz `frontend/e2e/fixtures.ts` (logowanie, zapis, odczyt pakietu, deszyfrowanie, unikalne markery i sprzątanie przez API). Każdy test dostaje świeży kontekst przeglądarki i loguje się realnie; nie ma współdzielonego `storageState`. Sprzątanie loguje się jako `alice` i usuwa wyłącznie ID zarejestrowane przez dany scenariusz.
+
+### 13.5 Mapowanie wymagań
+
+| Wymaganie | Dowód z ZR-22 |
+|---|---|
+| R01 — frontend React/JS | `npm run build`, 131/131 Vitest, 8/8 Playwright na Chrome 157 przez Compose |
+| R02 — logowanie i walidacja | E2E: błędne dane, 5 prób + `429`, puste i zbyt długie formularze, utrata sesji; RTL: 7 nowych przypadków |
+| R03 — szyfrowanie/deszyfrowanie | E2E: „Szyfruj” bez zapisu, pakiet `v1.`, deszyfrowanie w formularzu i na liście tym samym markerem |
+| R04 — zapis i odczyt | E2E: zapis → odświeżenie listy → ID → pakiet → plaintext → reload → logout; storage pusty |
+| R06 — XSS, kontrola dostępu, błędy | E2E: XSS jako tekst bez wykonania handlerów, 0 elementów `img`/`script`, obcy pakiet `422`, brak danych alice w sesji bob, `401`/`429`/`400` obsłużone |
+
+### 13.6 Mapowanie kryteriów akceptacji
+
+| Kryterium | Dowód |
+|---|---|
+| Scenariusz logowanie–szyfrowanie–zapis–odczyt–wylogowanie przechodzi | `flow.spec.ts`, wynik `8 passed (5,6 s)`; drugi przebieg `8 passed (5,5 s)` |
+| Niepoprawne dane i utrata sesji są obsłużone | `errors.spec.ts` (5 scenariuszy) + nowe testy RTL `429`, `401`, sieci i sesji |
+| Raport wskazuje wersję kodu i środowisko | Tabela 13.1 (baseline `e0fd30b`, system, Node, Playwright, Chrome, Compose) i komendy 13.2 |
+| XSS jako dosłowny tekst | `security.spec.ts`: tekst identyczny z payloadem, 0 `img`/`script`, flagi `window` `undefined` |
+| Przełączenie konta czyści dane | `security.spec.ts` + `App.test.tsx`: brak ID i treści alice, puste storage, obcy pakiet `422` |
+
+### 13.7 Ograniczenia
+
+- E2E wymaga Dockera, uruchomionego Compose i Chrome (lub pobranego Chromium + ffmpeg). `npm test` nadal działa bez stosu; E2E nie jest częścią `npm test`.
+- Scenariusze korzystają z kont demo profilu `local`; hasła są jawne w dokumentacji wyłącznie dla tego profilu.
+- Test limitera zużywa własny unikalny login, więc nie blokuje kont demo, ale pozostawia wpis w pamięci limitera do 60 s.
+- Sprzątanie usuwa wiadomości przez publiczne API jako `alice`; scenariusze nie tworzą wiadomości na innych kontach.
+- Artefakty przy sukcesie nie są zapisywane (trace/screenshot tylko przy błędzie), więc raport nie zawiera nowych zrzutów ekranu; dowodem są asercje i log przebiegu.
+- Backend nie był zmieniany, więc `./mvnw verify` nie był ponownie uruchamiany; obowiązuje 128/128 z ZR-20.
+- Skan axe nie był częścią ZR-22 (wynik 0 naruszeń z ZR-21 pozostaje aktualny dla niezmienionego UI).
+
+### 13.8 Dziennik wykonania
+
+| Data | Zmiana | Uzasadnienie | Problem i rozwiązanie | Testy | Następny krok |
+|---|---|---|---|---|---|
+| 2026-11-14 | 7 testów RTL (przełączenie konta, utrata sesji, błędy zapisu/deszyfrowania/sieci) oraz harness Playwright: config, global setup, fixtures, 8 scenariuszy, skrypty npm, `tsconfig.e2e.json`, wpisy `.gitignore` i ESLint. | Domknięcie R01/R02/R03/R04/R06: pełny przepływ i błędy na realnym stosie, XSS jako tekst, przełączenie konta, raport z wersją kodu i środowiskiem. | (1) Brak ffmpeg blokował nagrywanie wideo — `npx playwright install ffmpeg`. (2) Playwright nie był zależnością — pin 1.64.1 i `npm ci`. (3) `e2e` poza `tsconfig` — osobny `tsconfig.e2e.json` w `tsc -b`. (4) ESLint traktował `use` w fixture jak Hook — wyjątek dla `e2e/**`. (5) Sprzątanie po wylogowaniu — niezależne logowanie API w teardown; baza 32 → 32. (6) Vitest łapał `e2e/*.spec.ts` przez domyślny glob — `test.include` zawężone do `src/`. | `npm run lint`, `format:check`, `npm test` 131/131, `npm run build`, `npm run test:e2e` 8/8 (dwukrotnie), Compose health 200. | Limitery crypto 60/30, CI z E2E/axe, `docs/PERFORMANCE.md`, manualny odsłuch VoiceOver. |

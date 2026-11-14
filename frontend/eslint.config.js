@@ -6,7 +6,16 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'node_modules'] },
+  {
+    ignores: [
+      'dist',
+      'coverage',
+      'node_modules',
+      'test-results',
+      'playwright-report',
+      'blob-report',
+    ],
+  },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -21,6 +30,14 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.flat.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
+  {
+    files: ['e2e/**/*.ts'],
+    rules: {
+      // Playwright fixtures receive `use` as a callback, not a React Hook.
+      'react-hooks/rules-of-hooks': 'off',
+      'no-empty-pattern': 'off',
     },
   },
   prettier,

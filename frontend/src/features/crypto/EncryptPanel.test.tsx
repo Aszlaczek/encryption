@@ -205,4 +205,38 @@ describe('EncryptPanel', () => {
     expect(writeText).toHaveBeenCalledWith('v1.copy.me');
     expect(screen.getByText('Skopiowano pakiet')).toBeInTheDocument();
   });
+
+  it('keeps the text and shows the rate-limit message when saving fails', async () => {
+    const user = userEvent.setup();
+    saveMock.mockRejectedValue(
+      new ApiError(429, 'RATE_LIMITED', 'Zbyt wiele.', { retryAfterSeconds: 9 }),
+    );
+    render(<EncryptPanel />);
+
+    fillPlaintext('do zapisu');
+    await user.click(screen.getByRole('button', { name: 'Szyfruj i zapisz' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Zbyt wiele operacji. Spróbuj ponownie za 9 s.');
+    expect(alert).toHaveFocus();
+    expect(screen.getByLabelText('Treść wiadomości')).toHaveValue('do zapisu');
+    expect(screen.getByRole('button', { name: 'Szyfruj i zapisz' })).toBeEnabled();
+    expect(screen.queryByRole('region', { name: 'Wiadomość zapisana' })).not.toBeInTheDocument();
+  });
+
+  it('ends the session when saving returns 401', async () => {
+    const user = userEvent.setup();
+    const onSessionExpired = vi.fn();
+    saveMock.mockRejectedValue(new ApiError(401, 'UNAUTHENTICATED', 'Brak sesji.'));
+    render(<EncryptPanel onSessionExpired={onSessionExpired} />);
+
+    fillPlaintext('abc');
+    await user.click(screen.getByRole('button', { name: 'Szyfruj i zapisz' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Sesja wygasła. Zaloguj się ponownie.',
+    );
+    expect(onSessionExpired).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('region', { name: 'Wiadomość zapisana' })).not.toBeInTheDocument();
+  });
 });

@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetCsrfToken } from '../shared/api';
+import { EXPIRED_SESSION_NOTICE } from '../features/auth/notice';
 import { createFetchRouter, emptyPage, type Routes } from '../test/backend';
 import { clearCsrfCookie, mockResponse, setCsrfCookie } from '../test/http';
 import { App } from './App';
@@ -120,6 +121,96 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Zaloguj się' })).toBeInTheDocument();
     expect(screen.queryByText(secret)).not.toBeInTheDocument();
     expect(screen.queryByText(messageId)).not.toBeInTheDocument();
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  it('clears the previous account list and decrypted text when switching from alice to bob', async () => {
+    const user = userEvent.setup();
+    const aliceId = '11111111-1111-4111-8111-111111111111';
+    const bobId = '22222222-2222-4222-8222-222222222222';
+    const aliceSecret = 'Sekret widoczny tylko dla Alicji';
+    const bobSecret = 'Sekret widoczny tylko dla Boba';
+    let currentUser: { id: string; username: string } | null = { id: 'u1', username: 'alice' };
+
+    routes['/api/auth/me'] = () =>
+      currentUser ? mockResponse({ body: currentUser }) : unauthenticated();
+    routes['/api/messages'] = () =>
+      mockResponse({
+        body: {
+          items: [
+            currentUser?.username === 'bob'
+              ? { id: bobId, createdAt: '2026-11-14T11:00:00Z' }
+              : { id: aliceId, createdAt: '2026-11-14T10:00:00Z' },
+          ],
+          nextCursor: null,
+          hasMore: false,
+        },
+      });
+    routes[`/api/messages/${aliceId}/decrypt`] = () =>
+      mockResponse({ body: { plaintext: aliceSecret } });
+    routes[`/api/messages/${bobId}/decrypt`] = () =>
+      mockResponse({ body: { plaintext: bobSecret } });
+    routes['/api/auth/logout'] = () => {
+      currentUser = null;
+      return mockResponse({ status: 204 });
+    };
+    routes['/api/auth/login'] = () => {
+      currentUser = { id: 'u2', username: 'bob' };
+      return mockResponse({ body: currentUser });
+    };
+
+    render(<App />);
+
+    await screen.findByText(aliceId);
+    await user.click(screen.getByRole('button', { name: /Odszyfruj wiadomość/ }));
+    expect(await screen.findByText(aliceSecret)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Wyloguj się' }));
+    await screen.findByRole('heading', { name: 'Zaloguj się' });
+
+    await user.type(screen.getByLabelText('Login'), 'bob');
+    await user.type(screen.getByLabelText('Hasło'), 'BobDemo1234!');
+    await user.click(screen.getByRole('button', { name: 'Zaloguj się' }));
+
+    expect(await screen.findByText(bobId)).toBeInTheDocument();
+    expect(screen.queryByText(aliceId)).not.toBeInTheDocument();
+    expect(screen.queryByText(aliceSecret)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Odszyfruj wiadomość/ }));
+    expect(await screen.findByText(bobSecret)).toBeInTheDocument();
+    expect(screen.queryByText(aliceSecret)).not.toBeInTheDocument();
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  it('returns to the login form with a notice when a protected request loses the session', async () => {
+    const user = userEvent.setup();
+    const messageId = '33333333-3333-4333-8333-333333333333';
+    asAlice();
+    routes['/api/messages'] = () =>
+      mockResponse({
+        body: {
+          items: [{ id: messageId, createdAt: '2026-11-14T12:00:00Z' }],
+          nextCursor: null,
+          hasMore: false,
+        },
+      });
+    routes[`/api/messages/${messageId}/decrypt`] = () =>
+      mockResponse({
+        status: 401,
+        body: { status: 401, code: 'UNAUTHENTICATED', detail: 'Wymagane logowanie.' },
+      });
+
+    render(<App />);
+
+    await screen.findByText(messageId);
+    await user.click(screen.getByRole('button', { name: /Odszyfruj wiadomość/ }));
+
+    expect(await screen.findByRole('heading', { name: 'Zaloguj się' })).toBeInTheDocument();
+    expect(screen.getByText(EXPIRED_SESSION_NOTICE)).toBeInTheDocument();
+    expect(screen.queryByText(messageId)).not.toBeInTheDocument();
+    expect(screen.queryByText('Zapisane wiadomości')).not.toBeInTheDocument();
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
   });

@@ -22,6 +22,7 @@ Dokument zbiera decyzje przyjęte w ramach zadania rekrutacyjnego. Numeracja jes
 | [ADR-21](#adr-21--lista-zapisanych-wiadomości-i-podgląd-na-żądanie) | Lista zapisanych wiadomości i podgląd na żądanie | Accepted | 2026-11-13 |
 | [ADR-22](#adr-22--usuwanie-własnych-wiadomości) | Usuwanie własnych wiadomości | Accepted | 2026-11-14 |
 | [ADR-23](#adr-23--responsywność-i-dostępność) | Responsywność i dostępność | Accepted | 2026-11-14 |
+| [ADR-24](#adr-24--testy-e2e-w-playwright) | Testy E2E w Playwright | Accepted | 2026-11-14 |
 
 ---
 
@@ -877,6 +878,42 @@ Wymagania R07 i R08 obejmują responsywność (360/768/1280 px, 200% zoom) oraz 
 ### Powiązane wymagania
 
 R07, R08.
+
+---
+
+## ADR-24 — Testy E2E w Playwright
+
+### Status
+
+**Accepted — 2026-11-14 (ZR-22).**
+
+### Kontekst
+
+ZR-17…ZR-21 korzystały z jednorazowych skryptów Playwright poza repozytorium. Dawały dowody, ale nie były powtarzalne ani wykonywane w CI, a kryteria R01–R04 i R06 wymagają pokazania pełnego przepływu i obsługi błędów na działającej aplikacji. Potrzebny był harness w repozytorium, który nie będzie fałszywie „zielony” bez realnego stosu.
+
+### Decyzja
+
+1. **Testy E2E działają wyłącznie na realnym stosie Compose przez nginx** (`http://localhost:3000`). Nie uruchamiamy `vite preview` ani osobnego backendu: tylko pełny stos ćwiczy `JSESSIONID`, `SameSite`, domenę cookie, rotację CSRF i proxy nginx. Adres można nadpisać przez `E2E_BASE_URL`.
+2. **`globalSetup` sprawdza `/actuator/health`.** Gdy odpowiedź nie jest `200` ze `status: UP`, przebieg kończy się natychmiast z instrukcją `docker compose up -d`, zamiast serii niejasnych błędów w scenariuszach.
+3. **Playwright jest przypięty** jako `@playwright/test` `1.64.1` w `devDependencies` i w lockfile. Domyślnym kanałem jest zainstalowany Chrome (`channel: 'chrome'`, zgodnie z pomiarami ZR-21); `PW_CHANNEL=none` przełącza na Chromium z Playwrighta. Nagrywanie wideo wymaga `npx playwright install ffmpeg`.
+4. **Serializacja i izolacja.** `workers: 1` i `fullyParallel: false`, bo scenariusze dzielą jedną bazę i limiter logowania. Każdy test dostaje świeży kontekst przeglądarki i loguje się realnie; nie ma współdzielonego `storageState`.
+5. **Sprzątanie przez publiczne API.** Fixture rejestruje identyfikatory zapisanych wiadomości, a teardown loguje się niezależnie jako `alice`, pobiera nowy token CSRF i usuwa tylko te ID. `404` jest akceptowane. Nie używamy bezpośredniego SQL ani konta spoza demonstracyjnych.
+6. **Unikalne dane.** Każdy scenariusz używa markera z `Date.now()` i losowym sufiksem. Test limitera używa unikalnego nieistniejącego loginu, ponieważ klucz limitera to IP + login; współdzielone konto demo zostałoby zablokowane na 60 s.
+7. **Zakres scenariuszy.** 8 przypadków: pełny przepływ (logowanie, szyfrowanie bez zapisu, zapis, lista, pakiet, deszyfrowanie w formularzu i na liście, reload, wylogowanie), walidacja pustych i zbyt długich formularzy, zły format pakietu, błędne dane, 5 × `401` + `429`, utrata sesji, XSS jako tekst oraz przełączenie konta.
+8. **Artefakty tylko przy błędzie.** `trace`, `screenshot` i `video` są zapisywane wyłącznie dla nieudanych testów; katalogi `test-results/`, `playwright-report/` i `blob-report/` są ignorowane przez Git i ESLint.
+9. **Zakres zmian.** ZR-22 nie zmienia kodu produkcyjnego ani backendu. Dodaje testy RTL, harness E2E, skrypty npm i dokumentację.
+
+### Konsekwencje
+
+- Pełny przepływ i obsługa błędów są powtarzalne jedną komendą `npm run test:e2e`; `npm test` nadal działa bez Dockera.
+- E2E wymaga Dockera, Compose, Chrome (lub Chromium + ffmpeg) i kont demo profilu `local`. To ograniczenie jest świadome: testy nie udają środowiska produkcyjnego.
+- Liczba wierszy `messages` przed i po przebiegu pozostaje bez zmian (32 → 32), więc lokalne uruchomienia nie zaśmiecają bazy.
+- Test limitera zostawia własny wpis w pamięci limitera na do 60 s; nie dotyczy to kont demo.
+- Uruchamianie w CI wymaga osobnego workflow (poza ZR-22), podobnie jak axe i `docs/PERFORMANCE.md`.
+
+### Powiązane wymagania
+
+R01, R02, R03, R04, R06.
 
 ---
 

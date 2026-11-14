@@ -19,6 +19,10 @@ backend/target/
 # Node / frontend
 frontend/node_modules/
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/.last-run.json
 npm-debug.log*
 
 # Logs
