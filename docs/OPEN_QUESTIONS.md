@@ -1,6 +1,6 @@
 # Otwarte kwestie
 
-Stan na **2026-11-13**. Dokument uzupełnia README i ADR-y; każda kwestia ma jawnie wskazany status, żeby nie pozostawiać niejawnych założeń dotyczących dostępu i bezpieczeństwa.
+Stan na **2026-11-14**. Dokument uzupełnia README i ADR-y; każda kwestia ma jawnie wskazany status, żeby nie pozostawiać niejawnych założeń dotyczących dostępu i bezpieczeństwa.
 
 ## Legenda
 
@@ -60,9 +60,10 @@ Stan na **2026-11-13**. Dokument uzupełnia README i ADR-y; każda kwestia ma ja
 | Q44 | Źródło i profil kont demo | `application-local.properties`; seed tylko przy profilu `local`; Compose domyślnie `local`, nadpisywalny przez `SPRING_PROFILES_ACTIVE`; poza `local` brak seedu | Przyjęte | ADR-13, R02/R06 |
 | Q45 | Logowanie, sesja i CSRF | Ręczny login JSON; `JSESSIONID` `HttpOnly`/`SameSite=Lax`/30 min; `XSRF-TOKEN` + `X-XSRF-TOKEN`; rotacja sesji i tokenu po logowaniu; login zawsze wymaga CSRF; `401` przed `403`; limiter 5 nieudanych/60 s na IP+login, wygaśnięcie okna testowane kontrolowanym zegarem; `Secure` przez `SESSION_COOKIE_SECURE` | Przyjęte | ADR-14, R02/R06 |
 | Q46 | Sesja i CSRF w SPA | Sesja wyłącznie w cookie `JSESSIONID`; token CSRF z cookie `XSRF-TOKEN` tylko dla mutacji; brak `localStorage`/`sessionStorage`/IndexedDB; po rotacji reset tokenu i jednorazowy retry `403 CSRF_INVALID`; `/me` 401 = anonim; błędy `400`/`401`/`429` mapowane w formularzu | Przyjęte | ADR-19, R01/R02/R08 |
-| Q47 | Formularze szyfrowania i deszyfrowania w SPA | Dwie sekcje widoczne jednocześnie; „Szyfruj” bez zapisu i osobne „Szyfruj i zapisz”; wyniki jako tekst (`<output>`/`<pre>`), bez `innerHTML`; kopiowanie pakietu i treści przez Clipboard API z komunikatem o ręcznym fallbacku; klient pomocniczo waliduje 10 000 punktów kodowych / 40 000 B / 56 000 znaków, a serwer pozostaje źródłem prawdy; `401` kończy sesję i pokazuje komunikat na logowaniu | Przyjęte | ADR-20, R01/R03/R08 |
+| Q47 | Formularze szyfrowania i deszyfrowania w SPA | Dwie sekcje widoczne jednocześnie; „Szyfruj” bez zapisu i osobne „Szyfruj i zapisz”; wyniki jako tekst w `<pre>` (od ZR-21 z `role="group"`/`tabIndex={0}`), bez `innerHTML`; kopiowanie pakietu i treści przez Clipboard API z komunikatem o ręcznym fallbacku; klient pomocniczo waliduje 10 000 punktów kodowych / 40 000 B / 56 000 znaków, a serwer pozostaje źródłem prawdy; `401` kończy sesję i pokazuje komunikat na logowaniu | Przyjęte | ADR-20/ADR-23, R01/R03/R08 |
 | Q48 | Lista zapisanych wiadomości w SPA | Paginacja kursorem z „Pobierz więcej” i `limit=10`; lista tylko `id`/`createdAt`; pakiet i plaintext dopiero po kliknięciu; kursor przesuwa się tylko po sukcesie, błąd ponawia ten sam kursor; deduplikacja po `id`; `hasMore` bez kursora to błąd; `401` kończy sesję przez `onSessionExpired`; `App` używa `key={user.id}` | Przyjęte | ADR-21, R01/R04/R09 |
 | Q49 | Usuwanie wiadomości w API i SPA | Twarde `DELETE /api/messages/{id}` z owner scope z sesji i `204` bez ciała; cudza i nieistniejąca → identyczne `404`; potwierdzenie inline zamiast `window.confirm`; `404` przy usuwaniu traktowane jako już usunięte z komunikatem `role="status"`; kursor bez zmian, a po usunięciu ostatniej widocznej pozycji przy `hasMore` dociągana jest kolejna strona; skopiowany pakiet pozostaje ważny | Przyjęte | ADR-22, R01/R04/R06/R09 |
+| Q50 | Responsywność i dostępność SPA | Brak nowych media queries — układ jednokolumnowy sprawdzony na 360/768/1280 px, 640×400 (200% zoomu) i 320×320; 360 px przy 200% (180 px CSS) poza zakresem reflow WCAG; token `--focus-ring` `#1d4ed8`/`#93c5fd`, obramowania ≥ 55% krycia; `<main tabIndex={-1}>` dla skip linku; długie wyniki w `pre role="group" tabIndex={0}` (bez implicit live regionu); fokus wraca po Anuluj/Escape i przechodzi na następną pozycję/nagłówek po usunięciu; unikalne nazwy akcji z 8 znakami `id`; axe 4.10.3 jako uzupełnienie (0 naruszeń w 6 skanach), rzeczywisty odsłuch VoiceOver pozostaje manualny | Przyjęte | ADR-23, R07/R08 |
 
 ## Zasady rozstrzygania
 

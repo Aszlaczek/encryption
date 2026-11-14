@@ -7,7 +7,7 @@
 - **Zależności ZR-19 potwierdzone:** ZR-14 (`66fce7a`), ZR-17 (`c51a319`); baseline `9e9144b`
 - **Zależności ZR-20 potwierdzone:** ZR-19 (`bd0da9b`)
 - **Zależności ZR-21 potwierdzone:** ZR-20 (`449e97b`), baseline dokumentacji `37092f3`
-- **Commit funkcjonalny ZR-17:** `c51a319`; ZR-18: `26fda0d`; ZR-19: `bd0da9b`; ZR-20: `449e97b`; ZR-21: commit funkcjonalny tego zadania
+- **Commit funkcjonalny ZR-17:** `c51a319`; ZR-18: `26fda0d`; ZR-19: `bd0da9b`; ZR-20: `449e97b`; ZR-21: `46085ce`
 - **Zakres kodu ZR-17:** `frontend/src/shared/api/`, `frontend/src/features/auth/`, `frontend/src/app/App.tsx`, `frontend/vite.config.ts`, `frontend/src/styles/global.css`
 - **Zakres kodu ZR-18:** `frontend/src/features/crypto/`, `frontend/src/shared/ui/CopyButton.tsx`, `frontend/src/features/auth/` (`expireSession`), `frontend/src/app/App.tsx`, `frontend/src/styles/global.css`
 - **Zakres kodu ZR-19:** `frontend/src/features/messages/`, `frontend/src/shared/format.ts`, `frontend/src/features/crypto/` (importy formattera), `frontend/src/app/App.tsx`, `frontend/src/test/backend.ts`, `frontend/src/styles/global.css`

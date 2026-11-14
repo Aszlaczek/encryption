@@ -8,11 +8,11 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 
 ## Aktualny stan (2026-11-14)
 
-- Ostatni commit funkcjonalny: `449e97b` (ZR-20 — usuwanie własnych wiadomości); drzewo powinno być czyste.
-- Ukończone: ZR-01…ZR-20.
-- Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, `DELETE /api/messages/{id}`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem; formularze szyfrowania/deszyfrowania z licznikami, kopiowaniem i rozdziałem „Szyfruj”/„Szyfruj i zapisz”; lista zapisanych wiadomości z paginacją kursorem, podglądem pakietu i deszyfrowaniem dopiero po kliknięciu; usuwanie z potwierdzeniem inline, `404` jako „już usunięta” i auto-dociąganiem strony.
-- **Nie ma jeszcze** limitera crypto 60/30 na minutę. Testy E2E, CI i `docs/PERFORMANCE.md` też są do wykonania.
-- Testy: 128/128 backendu (`./mvnw spotless:check verify`), 120/120 frontendu (`npm test`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md).
+- Ostatni commit funkcjonalny: `46085ce` (ZR-21 — responsywność i dostępność); drzewo powinno być czyste po commicie.
+- Ukończone: ZR-01…ZR-21.
+- Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, `DELETE /api/messages/{id}`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem; formularze szyfrowania/deszyfrowania z licznikami, kopiowaniem i rozdziałem „Szyfruj”/„Szyfruj i zapisz”; lista zapisanych wiadomości z paginacją kursorem, podglądem pakietu i deszyfrowaniem dopiero po kliknięciu; usuwanie z potwierdzeniem inline, `404` jako „już usunięta” i auto-dociąganiem strony; responsywność 320–1280 px i 200% zoomu bez przepełnienia oraz dostępność z pełnym obchodem klawiatury, powrotem fokusu, przewijalnymi wynikami i 0 naruszeń axe.
+- **Nie ma jeszcze** limitera crypto 60/30 na minutę. Formalne E2E z axe w CI, CI i `docs/PERFORMANCE.md` też są do wykonania; manualny odsłuch VoiceOver pozostaje po stronie człowieka.
+- Testy: 128/128 backendu (`./mvnw spotless:check verify`), 124/124 frontendu (`npm test`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) (§12 — ZR-21).
 
 ## Najpierw przeczytaj
 
@@ -20,10 +20,10 @@ Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: fronte
 2. [`README.md`](README.md) — status, uruchomienie, dowody R01–R10.
 3. [`docs/API.md`](docs/API.md) — **kanoniczny** kontrakt HTTP, DTO, błędy, format pakietu, kursor.
 4. [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — schemat, mapowanie JPA, migracje, Argon2id.
-5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-22.
-6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q49 (rozstrzygnięte i otwarte).
+5. [`docs/DECISIONS.md`](docs/DECISIONS.md) — ADR-01…ADR-23.
+6. [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — Q01…Q50 (rozstrzygnięte i otwarte).
 7. [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) — raport testów negatywnych ZR-16 i ZR-20 (izolacja A/B, usuwanie, persystencja, kontrola mutacyjna).
-8. [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) — testy klienta, logowania, sesji, formularzy crypto, listy i usuwania oraz smoke Playwright ZR-17…ZR-20.
+8. [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) — testy klienta, logowania, sesji, formularzy crypto, listy i usuwania, a także responsywności i dostępności ZR-21 oraz smoke Playwright ZR-17…ZR-21.
 
 Gdy dokumenty się różnią, rozstrzyga `docs/API.md` dla HTTP i `docs/DATA_MODEL.md` dla bazy. Zmiana zachowania wymaga aktualizacji dokumentu i ADR w **tym samym commicie**.
 
@@ -145,8 +145,13 @@ docker compose exec -T db psql -U encryption -d encryption -c 'select username, 
 - **Twarde usunięcie** — `deleteByIdAndOwner_Id` zwracające `0` to `MessageNotFoundException`; nie dodawaj `find` + `delete`, `findAll` ani kosza. Usunięcie wiersza nie unieważnia skopiowanego pakietu (klucz i AAD bez zmian).
 - **`onSessionExpired` w efekcie** — w `MessagesPanel` callback jest trzymany w `useRef`, żeby nie restartować pierwszego pobrania przy każdej zmianie funkcji z `AuthProvider`.
 - **Testy listy** — `src/test/backend.ts` udostępnia router `fetch` po ścieżce; nowe żądanie (np. lista po logowaniu) dodaj jako trasę, a nie kolejny `mockResolvedValueOnce`, żeby nie przesuwać kolejki.
-- **Treść tylko jako tekst** — wynik deszyfrowania renderuj przez `{plaintext}` w `<pre>`/`<output>`; nie używaj `dangerouslySetInnerHTML` ani `innerHTML`.
+- **Fokus po usunięciu i Anuluj/Escape** — usunięcie wiersza zabiera fokusowany przycisk z DOM. `MessagesPanel` przenosi fokus na „Usuń” następnej pozycji albo nagłówek listy (`tabIndex={-1}`); Anuluj/Escape wracają do przycisku „Usuń”. Nie zostawiaj fokusu na `body`.
+- **Długie wyniki a fokus i live region** — `pre role="group" tabIndex={0}` z `aria-label` jest przewijalny z klawiatury i nie jest live regionem; `output` odpadł, bo ma implicit `role="status"`. Samo `aria-label` na `pre` bez roli dawało `aria-prohibited-attr`, a brak `tabIndex` — `scrollable-region-focusable`.
+- **Token pierścienia fokusu** — używaj `var(--focus-ring)` (`#1d4ed8` jasny, `#93c5fd` ciemny); `#60a5fa` na jasnym tle miał 2,4:1. Obramowania pól i przycisków secondary muszą mieć ≥ 55% krycia. Zmiana koloru wymaga ponownego pomiaru kontrastu.
+- **Nazwy akcji w tej samej minucie** — `createdAt` ma dokładność do minuty, więc etykiety „Pokaż/Odszyfruj/Usuń” zawierają 8 znaków `id`. Test pilnuje unikalności nazw.
+- **Odsłuch VoiceOver** — w tym środowisku nie ma automatyzacji mowy; `ariaSnapshot` i role to dowód struktury, nie odsłuchu. Nie oznaczaj testu mowy jako wykonanego bez człowieka.
+- **Treść tylko jako tekst** — wynik deszyfrowania renderuj przez `{plaintext}` w `<pre>`; nie używaj `dangerouslySetInnerHTML` ani `innerHTML`.
 
 ## Następny krok
 
-Limitery crypto 60/min i 30/min (szyfrowanie/deszyfrowanie) z `Retry-After` i testem okna na kontrolowanym zegarze. Potem formalne testy E2E, CI i dokument wydajnościowy. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).
+Limitery crypto 60/min i 30/min (szyfrowanie/deszyfrowanie) z `Retry-After` i testem okna na kontrolowanym zegarze. Potem formalne testy E2E z axe w CI, CI i dokument wydajnościowy oraz manualny odsłuch VoiceOver. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).

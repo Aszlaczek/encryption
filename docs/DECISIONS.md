@@ -15,6 +15,13 @@ Dokument zbiera decyzje przyjęte w ramach zadania rekrutacyjnego. Numeracja jes
 | [ADR-14](#adr-14--logowanie-sesja-i-csrf) | Logowanie, sesja i CSRF | Accepted | 2026-11-06 |
 | [ADR-15](#adr-15--zarządzanie-kluczem-szyfrującym) | Zarządzanie kluczem szyfrującym | Accepted | 2026-11-07 |
 | [ADR-16](#adr-16--cryptoservice-i-kodek-pakietu) | CryptoService i kodek pakietu | Accepted | 2026-11-07 |
+| [ADR-17](#adr-17--owner-scoped-api-zapisanych-wiadomości) | Owner-scoped API zapisanych wiadomości | Accepted | 2026-11-08 |
+| [ADR-18](#adr-18--stabilne-kody-walidacji-i-brak-odbicia-wejścia) | Stabilne kody walidacji i brak odbicia wejścia | Accepted | 2026-11-08 |
+| [ADR-19](#adr-19--klient-api-i-sesja-spa) | Klient API i sesja SPA | Accepted | 2026-11-13 |
+| [ADR-20](#adr-20--formularze-szyfrowania-i-deszyfrowania-w-spa) | Formularze szyfrowania i deszyfrowania w SPA | Accepted | 2026-11-13 |
+| [ADR-21](#adr-21--lista-zapisanych-wiadomości-i-podgląd-na-żądanie) | Lista zapisanych wiadomości i podgląd na żądanie | Accepted | 2026-11-13 |
+| [ADR-22](#adr-22--usuwanie-własnych-wiadomości) | Usuwanie własnych wiadomości | Accepted | 2026-11-14 |
+| [ADR-23](#adr-23--responsywność-i-dostępność) | Responsywność i dostępność | Accepted | 2026-11-14 |
 
 ---
 
@@ -752,7 +759,7 @@ R01, R02, R08.
 1. Formularze żyją w `features/crypto`: `api.ts` (trzy żądania), `limits.ts`, `messages.ts`, `format.ts`, `EncryptPanel`, `DecryptPanel` i `CryptoWorkspace`. `shared/ui/CopyButton` jest wspólnym komponentem prezentacyjnym.
 2. `features/crypto` nie importuje `features/auth`. `CryptoWorkspace` przyjmuje `onSessionExpired`, a kompozycję z `SessionPanel` wykonuje `App.tsx`, który może spinać oba moduły.
 3. Szyfrowanie i deszyfrowanie są dwiema sekcjami widocznymi jednocześnie. „Szyfruj” wywołuje `POST /api/crypto/encrypt` i nic nie zapisuje; „Szyfruj i zapisz” wywołuje `POST /api/messages` i pokazuje `id`, `<time dateTime>` oraz pakiet. Akcje są rozdzielone, bo zapis jest operacją trwałą.
-4. Wyniki są renderowane wyłącznie jako tekst: pakiet w `<output>`, odszyfrowana treść w `<pre>`. Zakazane jest `dangerouslySetInnerHTML` i jakiekolwiek wstrzykiwanie HTML; testy sprawdzają, że payload `<img onerror>` pozostaje tekstem i nie tworzy elementu.
+4. Wyniki są renderowane wyłącznie jako tekst: pakiet w `<output>`, odszyfrowana treść w `<pre>`. Zakazane jest `dangerouslySetInnerHTML` i jakiekolwiek wstrzykiwanie HTML; testy sprawdzają, że payload `<img onerror>` pozostaje tekstem i nie tworzy elementu. **Częściowo zastąpione przez ADR-23:** od ZR-21 pakiet jest w `pre role="group" tabIndex={0}`, żeby długi wynik był przewijalny z klawiatury i nie był live regionem.
 5. Kopiowanie używa `navigator.clipboard.writeText`. Brak API lub odrzucenie daje komunikat o ręcznym kopiowaniu; nie ma fallbacku do `execCommand` ani zapisu w storage. Kopiowany jest pakiet i odszyfrowana treść.
 6. Klient pomocniczo waliduje 1–10 000 punktów kodowych i 40 000 B UTF-8 plaintextu oraz 56 000 znaków pakietu. Serwer pozostaje źródłem prawdy; klient nie odrzuca pakietu na podstawie własnej interpretacji formatu, żeby komunikaty `INVALID_PACKAGE_FORMAT` i `DECRYPT_FAILED` pochodziły z backendu.
 7. Błędy są mapowane w jednym miejscu: `VALIDATION_FAILED` trafia do pola, `INVALID_PACKAGE_FORMAT` i `DECRYPT_FAILED` mają osobne komunikaty, `429` pokazuje `Retry-After`, `403` po retry informuje o odświeżeniu strony, a błąd sieci nie udaje błędu serwera.
@@ -786,7 +793,7 @@ R01, R03, R08.
 3. Pierwsza strona to `GET /api/messages?limit=10`. Lista pokazuje wyłącznie `id` i `createdAt`; pakiet (`GET /api/messages/{id}`) i plaintext (`POST /api/messages/{id}/decrypt`) są pobierane dopiero po kliknięciu przy wybranej wiadomości. Nie ma masowego pobierania pakietów ani plaintextu.
 4. Paginacja jest kursorowa i jednokierunkowa: „Pobierz więcej” wysyła `nextCursor` z poprzedniej odpowiedzi. Kursor przesuwa się dopiero po sukcesie, więc błąd strony zachowuje wczytane pozycje i ponawia ten sam kursor. Pozycje są deduplikowane po `id`, a `hasMore && !nextCursor` jest błędem zamiast pętlą.
 5. Stany interfejsu: `role="status"` podczas ładowania, komunikat o pustej liście, `role="alert"` z fokusem dla błędu pierwszej i kolejnej strony. „Odśwież listę” wraca do pierwszej strony, a „Pobierz więcej” znika po wyczerpaniu danych.
-6. Wyniki są renderowane wyłącznie jako tekst: pakiet w `<output>`, plaintext w `<pre>`. Obowiązuje zakaz `dangerouslySetInnerHTML` i `innerHTML`; testy oraz smoke sprawdzają, że `<img onerror>` nie tworzy elementu i nie wykonuje handlera.
+6. Wyniki są renderowane wyłącznie jako tekst: pakiet w `<output>`, plaintext w `<pre>`. Obowiązuje zakaz `dangerouslySetInnerHTML` i `innerHTML`; testy oraz smoke sprawdzają, że `<img onerror>` nie tworzy elementu i nie wykonuje handlera. **Częściowo zastąpione przez ADR-23:** od ZR-21 pakiet jest w `pre role="group" tabIndex={0}`, żeby długi wynik był przewijalny z klawiatury i nie był live regionem.
 7. `401` z listy, szczegółów lub deszyfrowania kończy sesję przez `onSessionExpired`; pozostałe błędy (`404`, `INVALID_CURSOR`, `403`, `429`, `MESSAGE_UNDECRYPTABLE`, sieć) są mapowane lokalnie i nie czyszczą już wczytanych danych.
 8. Testy integracyjne korzystają z routera `fetch` po ścieżce (`src/test/backend.ts`) zamiast kolejki `mockResolvedValueOnce`, ponieważ po zalogowaniu pojawiło się dodatkowe żądanie listy.
 9. Usuwanie wiadomości pozostaje poza zakresem ZR-19; nie dodano `DELETE` ani przycisku usuwania.
@@ -833,6 +840,43 @@ R01, R04, R09.
 ### Powiązane wymagania
 
 R01, R04, R06, R09.
+
+---
+
+## ADR-23 — Responsywność i dostępność
+
+### Status
+
+**Accepted — 2026-11-14 (ZR-21).**
+
+### Kontekst
+
+Wymagania R07 i R08 obejmują responsywność (360/768/1280 px, 200% zoom) oraz dostępność (klawiatura, czytnik ekranu, fokus, kontrast, ARIA, długie szyfrogramy). Sam przegląd kodu nie wystarcza: potrzebne były pomiary na realnym stosie Compose, przez nginx, z prawdziwym pakietem i maksymalnym plaintextem.
+
+### Decyzja
+
+1. Najpierw zmierzono stan wyjściowy w Chrome 157 przez Playwright i axe-core 4.10.3, a dopiero potem naprawiono zmierzone problemy. Kolejność „pomiar → poprawka → ponowny pomiar” jest obowiązująca dla zadań dostępności.
+2. **Responsywność bez nowych media queries.** Istniejący układ jednokolumnowy z `flex-wrap`, `max-width` i `overflow-wrap: anywhere` nie przepełniał się od 320 px CSS. Zamiast dodawać breakpointy sprawdzono 4 stany (logowanie, lista, długi pakiet i treść, potwierdzenie usunięcia) na 360×800, 768×1024, 1280×800, 640×400 i dodatkowo 320×320.
+3. **Zakres zoomu.** 200% przy oknie 1280×800 jest równoważne viewportowi CSS 640×400 i taki viewport zmierzono. 360 px przy 200% daje 180 px CSS, czyli mniej niż próg reflow WCAG 2.2 (320 px CSS); ten przypadek jest świadomie poza zakresem, a 320 px CSS sprawdzono jako 400% przy 1280 px.
+4. **Jeden token pierścienia fokusu.** `--focus-ring` wynosi `#1d4ed8` w trybie jasnym i `#93c5fd` w ciemnym; jest używany w skip linku, linkach, polach, przyciskach, `<main>`, nagłówku listy i kontenerach wyników. Obramowania pól i przycisków secondary mają ≥ 55% krycia. Każda zmiana koloru wymaga ponownego pomiaru kontrastu (próg 3:1 dla UI, 4,5:1 dla tekstu).
+5. **Długie wyniki to obszary przewijania, nie live region.** Pakiet i plaintext są renderowane w `pre role="group" tabIndex={0}` z `aria-label`. `tabIndex` zapewnia przewijanie z klawiatury i usuwa `scrollable-region-focusable`; `role="group"` nadaje nazwę bez `aria-prohibited-attr`, a `pre` zamiast `output` nie jest implicit `role="status"`, więc czytnik nie odczyta dziesiątek tysięcy znaków po pojawieniu się wyniku.
+6. **Skip link i główny landmark.** `<main id="main-content" tabIndex={-1}>` przyjmuje fokus po aktywacji skip linku; bez `tabIndex` przeglądarka przenosiła tylko widok, a fokus zostawał na linku.
+7. **Fokus po akcjach destrukcyjnych.** Po otwarciu potwierdzenia fokus trafia na „Tak, usuń”. Anuluj i Escape zamykają grupę i wracają do przycisku „Usuń”. Po udanym usunięciu fokus przechodzi na akcję „Usuń” następnej widocznej wiadomości, a przy pustej liście na nagłówek „Zapisane wiadomości” (`tabIndex={-1}`). Fokus nigdy nie spada na `body`.
+8. **Unikalne nazwy akcji.** `createdAt` ma dokładność do minuty, więc etykiety „Pokaż pakiet”, „Odszyfruj” i „Usuń” zawierają 8 znaków `id`. Link z `target="_blank"` ma ukryty opis „(otwiera się w nowej karcie)”.
+9. **Dowody i ich granice.** Kryteria akceptacji potwierdzają pomiary viewportów, obchód klawiatury, drzewo dostępności (`ariaSnapshot`), ręcznie policzony kontrast i 6 skanów axe bez naruszeń. axe jest uzupełnieniem, nie jedynym dowodem. `color-contrast` pozostawiony przez axe jako `incomplete` dla pól `Canvas` i długiego `pre` rozstrzygnięto ręcznie. Rzeczywisty odsłuch VoiceOver nie został wykonany, bo środowisko nie ma automatyzacji mowy; pozostaje manualnym krokiem człowieka.
+10. **Zakres zmian.** ZR-21 nie zmienia backendu, schematu, kontraktu HTTP ani niezmienników bezpieczeństwa (właściciel wyłącznie z sesji, brak plaintextu w bazie, treść bez `innerHTML`). Zmiany dotyczą wyłącznie warstwy prezentacji i testów frontendu.
+
+### Konsekwencje
+
+- Aplikacja nie ma poziomego przewijania strony od 320 px CSS, także przy pakiecie 53 380 znaków i plaintextcie 40 000 B; długie wyniki przewijają się we własnym kontenerze.
+- Wszystkie akcje są osiągalne klawiaturą z widocznym pierścieniem, a fokus nie ginie po potwierdzeniu, anulowaniu ani usunięciu.
+- Czytnik ekranu otrzymuje krótkie, unikalne nazwy akcji i nie jest zalewany treścią szyfrogramu.
+- Pomiary i axe były jednorazowe, poza repozytorium; w repozytorium są zrzuty `docs/screenshots/zr21/` i raport `docs/TEST_REPORT_FRONTEND.md` §12. Formalny harness E2E/axe w CI pozostaje osobnym zadaniem, podobnie jak manualny odsłuch VoiceOver.
+- Brak media queries oznacza mniej kodu, ale przyszłe elementy (np. tabele, wielokolumnowe formularze) będą wymagały własnych pomiarów przy 320 px.
+
+### Powiązane wymagania
+
+R07, R08.
 
 ---
 
