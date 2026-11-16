@@ -2,7 +2,7 @@
 
 Aplikacja webowa umożliwiająca logowanie, szyfrowanie i deszyfrowanie wiadomości oraz zapis i odczyt szyfrogramów z bazy PostgreSQL. Projekt realizowany w ramach zadania rekrutacyjnego.
 
-> **Status:** ZR-22 — testy formularzy i E2E: **131/131** testów frontendu (7 nowych RTL) oraz **8/8** scenariuszy Playwright na realnym Compose przez nginx (pełny przepływ logowanie–szyfrowanie–zapis–odczyt–wylogowanie, walidacja, błędne dane, 5×401 + 429, utrata sesji, XSS jako tekst, przełączenie konta). Backend: **128/128** (bez zmian w ZR-22). Wcześniej ZR-21 dał 0 naruszeń axe i brak przepełnienia 320–1280 px przy 200% zoomu. Limiter crypto 60/30, CI z E2E/axe i `docs/PERFORMANCE.md` pozostają do wykonania. Raporty: [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) (§12 — ZR-21, §13 — ZR-22).
+> **Status:** ZR-23 — optymalizacja listy wiadomości (`findFirstPage`, kursor row-value) i pomiary wydajności w [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md). Testy: backend **128/128** (`./mvnw spotless:check verify`), frontend **131/131** i build, E2E **8/8** na realnym Compose przez nginx. ZR-21 dał 0 naruszeń axe i brak przepełnienia 320–1280 px przy 200% zoomu. Pozostają do wykonania: limiter crypto 60/30, CI z E2E/axe oraz manualny odsłuch VoiceOver. Raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md), [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) (§12 — ZR-21, §13 — ZR-22).
 
 **Repozytorium:** <https://github.com/Aszlaczek/encryption>
 
@@ -177,7 +177,7 @@ node scripts/validate-api-contract.mjs
 | R07 | Responsywność | Zmierzone 4 stany (logowanie, lista, długi pakiet i treść, potwierdzenie usunięcia) na 7 konfiguracjach: 360×800, 768×1024, 1280×800, 640×400 (200% zoomu), dodatkowo 320×320 (400%); wszędzie `scrollWidth == clientWidth` i 0 przyciętych elementów; pakiet 53 380 znaków i plaintext 40 000 B bez przepełnienia; zrzuty w [`docs/screenshots/zr21/`](docs/screenshots/zr21/); szczegóły w [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) §12.3 |
 | R08 | Dostępność | Landmarki `banner`/`main`/`contentinfo`, spójne `h1`→`h4`, skip link przenoszący fokus na `<main tabIndex={-1}>`, pełny obchód klawiatury (38 kontrolek, pierścień `outline: solid 3px`), Escape/Anuluj i usunięcie z powrotem fokusu, długie wyniki w `pre role="group" tabIndex={0}` przewijalne z klawiatury, 12 pustych live regionów bez treści szyfrogramu, unikalne nazwy akcji; kontrast tekstu 17,06:1/14,48:1 i pierścienia 6,41:1/9,90:1; **0 naruszeń axe 4.10.3** w 6 skanach; rzeczywisty odsłuch VoiceOver opisany jako ograniczenie w §12.6/§12.10 |
 | R09 | Wydajność | Paginacja kursorem w API i w UI (`limit=10`, „Pobierz więcej”, kursor przekazywany bez reinterpretacji), indeks `(owner_id, created_at desc, id desc)`, limity; lista pobiera wyłącznie `id`/`createdAt`, a pakiet i plaintext dopiero po kliknięciu; pomiary zrealizowane: `docs/PERFORMANCE.md` — benchmark RPS, `EXPLAIN ANALYZE` z row-value kursorem, percentylowe czasy odpowiedzi; limitery crypto 60/30 pozostało do wykonania (zadanie po ZR-23) |
-| R10 | Czytelność i podział na moduły | Backend package-by-feature, frontend `features/*` + `shared/*`, ESLint/Prettier/Spotless/Enforcer, README, ADR-10; CI w kolejnym zadaniu |
+| R10 | Czytelność i podział na moduły | Backend package-by-feature, frontend `features/*` + `shared/*`, ESLint/Prettier/Spotless/Enforcer, README, ADR-10; kontrola jakości uruchamiana lokalnie: `./mvnw spotless:check verify`, `npm run lint && npm run format:check && npm test && npm run build`, `npm run test:e2e` (8/8). Workflow CI nie jest jeszcze skonfigurowany — do wykonania. |
 
 ## Architektura docelowa
 
@@ -374,8 +374,8 @@ Konta są tworzone wyłącznie przy aktywnym profilu `local` (`application-local
 | Frontend — smoke w przeglądarce | Playwright 1.64.1, Chrome, Compose | logowanie `alice` → reload → wylogowanie, `401`, cookies `HttpOnly`/`SameSite=Lax`, pusty `localStorage`/`sessionStorage`/IndexedDB; lista: jedno żądanie pierwszej strony, brak prefetchu pakietu/plaintextu, izolacja A/B, błąd strony z retry tego samego kursora, podgląd pakietu, XSS jako tekst; raport [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) |
 | E2E — pełny przepływ i błędy | Playwright 1.64.1 + Chrome 157, Compose przez nginx | `cd frontend && npm run test:e2e` — 8/8: logowanie–szyfrowanie–zapis–odczyt–wylogowanie, puste i zbyt długie formularze, zły format pakietu, błędne dane, 5 × `401` + `429`, utrata sesji, XSS jako tekst, przełączenie alice → bob; raport §13 |
 | Docker — czysty start | Docker Compose, healthchecki | `docker compose down -v && docker compose up -d --build` |
-| Wydajność | `hey`, `EXPLAIN ANALYZE` | opis w `docs/PERFORMANCE.md` (do wykonania) |
-| CI | GitHub Actions | workflow w `.github/workflows/ci.yml` (do wykonania) |
+| Wydajność | `hey`, `EXPLAIN ANALYZE` | raport w [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md): RPS, percentyle i plany zapytań (ZR-23) |
+| CI | GitHub Actions | workflow w `.github/workflows/ci.yml` — nieutworzony, zaplanowany |
 | Frontend — lint i format | ESLint, Prettier | `cd frontend && npm run lint && npm run format:check` |
 | Sekrety | `git grep`, `.gitignore` | `./scripts/check-secrets.sh` |
 

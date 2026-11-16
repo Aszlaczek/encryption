@@ -6,13 +6,13 @@ Ten plik jest automatycznie ładowany przez OpenCode. Zawiera skrót; szczegół
 
 Aplikacja do szyfrowania wiadomości między zalogowanymi użytkownikami: frontend React + Vite + TypeScript (UI po polsku), backend Spring Boot 4.1.2 / Java 17, PostgreSQL 16, uruchamiane przez Docker Compose. Hasła są hashowane Argon2id, a treść wiadomości szyfrowana po stronie serwera AES-256-GCM. Szczegóły wymagań: [`README.md`](README.md), kontrakt HTTP: [`docs/API.md`](docs/API.md).
 
-## Aktualny stan (2026-11-14)
+## Aktualny stan (2026-11-16)
 
-- Ostatni commit funkcjonalny: `69e0788` (docs — dokumentacja wydajności ZR-23); drzewo powinno być czyste po commicie.
+- Ostatni commit funkcjonalny: `5ee62aa` (feat — ZR-23: row-value cursor i pomiary wydajności); drzewo czyste po commicie porządkującym dokumentację.
 - Ukończone: ZR-01…ZR-23.
 - Działa: endpointy auth, crypto oraz `POST/GET /api/messages`, `GET /api/messages/{id}`, `POST /api/messages/{id}/decrypt`, `DELETE /api/messages/{id}`, owner scope, kursor (limit maks. 50), CSRF, błędy RFC 9457 i `no-store`; frontend logowania z klientem API, sesją `/me`, CSRF i wylogowaniem; formularze szyfrowania/deszyfrowania z licznikami, kopiowaniem i rozdziałem „Szyfruj”/„Szyfruj i zapisz”; lista zapisanych wiadomości z paginacją kursorem, podglądem pakietu i deszyfrowaniem dopiero po kliknięciu; usuwanie z potwierdzeniem inline, `404` jako „już usunięta” i auto-dociąganiem strony; responsywność 320–1280 px i 200% zoomu bez przepełnienia oraz dostępność z pełnym obchodem klawiatury, powrotem fokusu, przewijalnymi wynikami i 0 naruszeń axe. Harness Playwright w `frontend/e2e/` pokrywa pełny przepływ i błędy na realnym Compose przez nginx.
-- **Nie ma jeszcze** limitera crypto 60/30 na minutę. CI z E2E/axe i `docs/PERFORMANCE.md` też są do wykonania; manualny odsłuch VoiceOver pozostaje po stronie człowieka.
-- Testy: 128/128 backendu (`./mvnw spotless:check verify`), 131/131 frontendu (`npm test`) i 8/8 E2E (`npm run test:e2e`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) (§12 — ZR-21, §13 — ZR-22).
+- **Nie ma jeszcze** limitera crypto 60/30 na minutę. CI z E2E/axe i manualny odsłuch VoiceOver pozostają do wykonania po stronie człowieka.
+- Testy: 128/128 backendu (`./mvnw spotless:check verify`), 131/131 frontendu (`npm test`, `npm run build`) i 8/8 E2E (`npm run test:e2e`); raporty: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) i [`docs/TEST_REPORT_FRONTEND.md`](docs/TEST_REPORT_FRONTEND.md) (§12 — ZR-21, §13 — ZR-22), wydajność: [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 
 ## Najpierw przeczytaj
 
@@ -164,7 +164,8 @@ docker compose exec -T db psql -U encryption -d encryption -c 'select username, 
 - **Selektory E2E** — „Odszyfruj” istnieje w formularzu i w każdej pozycji listy: używaj `exact: true` lub `/^Odszyfruj wiadomość/`. Pozycje mają `li[data-message-id]`.
 - **ESLint w `e2e/`** — `use` w fixture Playwrighta nie jest Hookiem; dla `e2e/**` wyłączone są `react-hooks/rules-of-hooks` i `no-empty-pattern`. Nie przenoś tego wyjątku na `src/`.
 - **Vitest a `e2e/*.spec.ts`** — domyślny glob Vitest łapie specy Playwrighta i `npm test` zgłasza nieudane pliki mimo zielonych testów. `test.include` w `vite.config.ts` ogranicza się do `src/**/*.{test,spec}.{ts,tsx}`; nie usuwaj tego.
+- **Uszkodzony `backend/target/`** — pusty JAR i duplikaty klas ze spacją (np. `BackendApplication 2.class`) po przerwanym repackagu dają `spring-boot:repackage: Unable to find main class`, mimo że testy przechodzą. `./mvnw clean verify` usuwa ten stan; nie zmieniaj `pom.xml`, żeby „naprawić” ten błąd.
 
 ## Następny krok
 
-Limitery crypto 60/min i 30/min (szyfrowanie/deszyfrowanie) z `Retry-After` i testem okna na kontrolowanym zegarze. Potem CI z E2E i axe, `docs/PERFORMANCE.md` oraz manualny odsłuch VoiceOver. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).
+Limitery crypto 60/min i 30/min (szyfrowanie/deszyfrowanie) z `Retry-After` i testem okna na kontrolowanym zegarze. Potem CI z E2E i axe oraz manualny odsłuch VoiceOver. Warunki wejścia i kolejność opisuje sekcja „Następne kroki” w [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md).

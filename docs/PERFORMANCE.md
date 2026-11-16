@@ -1,9 +1,9 @@
 # Performance Report — ZR-23
 
-**Date:** 2026-11-14
+**Date:** 2026-11-14 (ponowna weryfikacja 2026-11-16)
 **Environment:** macOS 27.0.1 (Apple M4, 8192 MB RAM), Docker Desktop, PostgreSQL 16.15,
-Backend Spring Boot 4.1.2 / Java 27, Frontend React 19.3.1 / Vite 7.3.7
-**Commit:** `69e0788` (ZR-22 head), code modified in this task: `MessageRepository.findFirstPage/findNextPage`
+Backend Spring Boot 4.1.2 / Java 17 (target; pomiary na JDK 27), Frontend React 19.3.1 / Vite 7.3.7
+**Commit:** `5ee62aa` (ZR-23); punkt odniesienia: `69e0788` (ZR-22 head)
 **Dataset:** 100 000 encrypted messages (perf_heavy: 50 000, perf_a–e: 5 × 10 000)
 - Size mix: 90% 128–512 B, 9% ~8 KB, 1% ~40 KB ciphertext
 - `created_at`: spread from 2026-01-01; unique nonce/tag per row
@@ -149,9 +149,9 @@ docker compose exec -T db psql -U encryption -d encryption -tAc "select count(*)
 | Task | Commit | Status |
 |---|---|---|
 | ZR-22 (tests, E2E, docs) | `28bf7e1`, `69e0788` | Done |
-| **ZR-23 (performance measurements + index optimization)** | **WIP** | **See this report** |
+| **ZR-23 (performance measurements + index optimization)** | `5ee62aa` | **Done** |
 | `docs/PERFORMANCE.md` addition | This document | Done |
-| `README.md` R09 update | Pending | Will add benchmark table |
-| `AGENTS.md` update | Pending | Will add ZR-23 entry |
-| `DECISIONS.md` ADR-25 | Pending | Will document the row-value cursor optimization |
-| `OPEN_QUESTIONS.md` Q52 | Pending | Will record "Performance: row-value cursor comparison adopted" |
+| `README.md` R09 update | `5ee62aa` | Done |
+| `AGENTS.md` update | commit porządkujący dokumentację | Done |
+| `DECISIONS.md` ADR-25 | commit porządkujący dokumentację | Done |
+| `OPEN_QUESTIONS.md` Q52 | commit porządkujący dokumentację | Done |

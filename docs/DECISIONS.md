@@ -378,7 +378,7 @@ Schemat `app_users` i `messages` powstał w ZR-02 jako migracje Flyway. ZR-06 wy
 3. `created_at` jest generowane przez bazę: `@Generated(event = EventType.INSERT)` + `insertable = false, updatable = false`. Nie używamy `@CreationTimestamp`, bo timestamp powstawałby w JVM, niezgodnie z kontraktem.
 4. `nonce`, `ciphertext` i `tag` to `byte[]` → `bytea`; `format_version` to `short` → `smallint`; `created_at` to `Instant` → `timestamptz`. Hibernate działa w UTC (`hibernate.jdbc.time_zone=UTC`).
 5. Relacja jest jednokierunkowa: `Message.owner` (`@ManyToOne(fetch = LAZY, optional = false)`). `AppUser` nie ma kolekcji wiadomości, żeby uniknąć N+1 i przypadkowej serializacji historii użytkownika.
-6. Repozytoria są owner-scoped. `AppUserRepository` udostępnia tylko `findByUsername` i `existsByUsername`. `MessageRepository` udostępnia `findByIdAndOwner_Id`, `findByOwner_IdOrderByCreatedAtDescIdDesc`, `findNextPage` oraz `deleteByIdAndOwner_Id`; nie ma metod `findAll` ani wyszukiwania po samym `id`.
+6. Repozytoria są owner-scoped. `AppUserRepository` udostępnia tylko `findByUsername` i `existsByUsername`. `MessageRepository` udostępnia `findByIdAndOwner_Id`, `findFirstPage`, `findNextPage` oraz `deleteByIdAndOwner_Id`; nie ma metod `findAll` ani wyszukiwania po samym `id`.
 7. Zapytanie kursorowe realizuje warunek `(created_at, id) < (:createdAt, :id)` z sortowaniem `created_at desc, id desc`, zgodnie z `docs/API.md`. Tie-breaker po `id` zapobiega gubieniu i duplikowaniu wierszy o tym samym czasie.
 8. `deleteByIdAndOwner_Id` jest jawnym `@Modifying @Transactional @Query` i zwraca liczbę usuniętych wierszy; dzięki temu usunięcie cudzej wiadomości jest bezpieczne i policzalne.
 9. `spring.jpa.hibernate.ddl-auto=validate`. Hibernate nigdy nie tworzy ani nie zmienia schematu; jedynym źródłem prawdy są migracje Flyway.
@@ -909,11 +909,56 @@ ZR-17…ZR-21 korzystały z jednorazowych skryptów Playwright poza repozytorium
 - E2E wymaga Dockera, Compose, Chrome (lub Chromium + ffmpeg) i kont demo profilu `local`. To ograniczenie jest świadome: testy nie udają środowiska produkcyjnego.
 - Liczba wierszy `messages` przed i po przebiegu pozostaje bez zmian (32 → 32), więc lokalne uruchomienia nie zaśmiecają bazy.
 - Test limitera zostawia własny wpis w pamięci limitera na do 60 s; nie dotyczy to kont demo.
-- Uruchamianie w CI wymaga osobnego workflow (poza ZR-22), podobnie jak axe i `docs/PERFORMANCE.md`.
+- Uruchamianie w CI wymaga osobnego workflow (poza ZR-22/ZR-23); axe i `docs/PERFORMANCE.md` są już pokryte lokalnie.
 
 ### Powiązane wymagania
 
 R01, R02, R03, R04, R06.
+
+---
+
+## ADR-25 — Projekcja listy i kursor row-value
+
+### Status
+
+**Accepted — 2026-11-14 (ZR-23).**
+
+### Kontekst
+
+Lista wiadomości pobiera wyłącznie `id` i `createdAt`, ale wcześniejsza ścieżka ładowała encję `Message` wraz z szyfrogramem, a kursor używał warunku OR (`created_at < :createdAt OR (created_at = :createdAt AND id < :id)`). Przy 100 000 wiadomości PostgreSQL musiał pobierać i filtrować każdy nowszy wpis indeksu, co zwiększało liczbę shared hits i czas odpowiedzi.
+
+### Decyzja
+
+1. `MessageRepository.findFirstPage` i `findNextPage` są zapytaniami natywnymi zwracającymi projekcję `MessageListRow` (`id`, `createdAt`); szyfrogram nie jest ładowany do listy.
+2. `findNextPage` używa porównania row-value `(created_at, id) < (cast(:createdAt as timestamptz), cast(:id as uuid))` z sortowaniem `created_at desc, id desc`, zgodnie z istniejącym indeksem `(owner_id, created_at desc, id desc)`.
+3. Nie dodajemy migracji ani nowego indeksu — istniejący indeks obsługuje oba warianty, a row-value pozwala na index-only scan.
+4. Zapytanie pozostaje owner-scoped przez `owner_id = :ownerId`; właściciel pochodzi z sesji, nie z żądania.
+5. Rozwiązanie jest PostgreSQL-specific; zmiana bazy wymaga przepisania zapytania, ale kontrakt HTTP i format kursora pozostają bez zmian.
+
+### Konsekwencje
+
+**Pozytywne:**
+
+- Index-only scan zamiast filtrowania nowszych wpisów: 4 shared hits zamiast 93 (offset 990) i 4502 (offset 49890).
+- Wyższy throughput listy (`limit=10`, concurrency 10): 5075 RPS i p99 4,4 ms w pomiarach ZR-23.
+- Mniejszy transfer z bazy, bo lista nie pobiera `nonce`, `ciphertext` ani `tag`.
+- Brak zmian w API i w formacie kursora.
+
+**Negatywne:**
+
+- Natywne SQL i porównanie row-value wiążą repozytorium z PostgreSQL.
+- Indeks i plan zapytania trzeba utrzymywać razem; zmiana sortowania wymaga aktualizacji obu.
+- Projekt `MessageListRow` musi pozostać zgodny z aliasami kolumn (`id`, `createdAt`).
+
+### Odrzucone alternatywy
+
+- **Ładowanie encji `Message` i mapowanie w serwisie** — niepotrzebnie pobiera szyfrogram i zwiększa I/O.
+- **Klasyczny kursor OR** — działa poprawnie, ale przy głębokich stronach filtruje tysiące wpisów indeksu.
+- **Nowy indeks lub OFFSET** — OFFSET skanuje wszystkie poprzednie wiersze, a istniejący indeks już pokrywa row-value.
+
+### Powiązane wymagania
+
+R09.
 
 ---
 

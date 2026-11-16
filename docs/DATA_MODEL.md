@@ -188,9 +188,9 @@ Mapowanie jest weryfikowane przez `spring.jpa.hibernate.ddl-auto=validate`; Hibe
 | Repozytorium | Metody |
 |---|---|
 | `AppUserRepository` | `findByUsername`, `existsByUsername` |
-| `MessageRepository` | `findByIdAndOwner_Id`, `findByOwner_IdOrderByCreatedAtDescIdDesc`, `findNextPage`, `deleteByIdAndOwner_Id` |
+| `MessageRepository` | `findByIdAndOwner_Id`, `findFirstPage`, `findNextPage`, `deleteByIdAndOwner_Id` |
 
-Wszystkie operacje na wiadomościach są ograniczone parametrem właściciela. `findNextPage` realizuje warunek `(created_at, id) < (:createdAt, :id)` z sortowaniem `created_at desc, id desc`, zgodnie z paginacją w [`docs/API.md`](API.md#8-paginacja). `deleteByIdAndOwner_Id` jest jawnym `@Modifying @Transactional @Query` i zwraca liczbę usuniętych wierszy.
+Wszystkie operacje na wiadomościach są ograniczone parametrem właściciela. `findFirstPage` i `findNextPage` zwracają projekcję `MessageListRow` z `id` i `createdAt` (bez szyfrogramu), dzięki czemu lista korzysta z index-only scan. `findNextPage` realizuje warunek row-value `(created_at, id) < (:createdAt, :id)` z sortowaniem `created_at desc, id desc`, zgodnie z paginacją w [`docs/API.md`](API.md#8-paginacja). `deleteByIdAndOwner_Id` jest jawnym `@Modifying @Transactional @Query` i zwraca liczbę usuniętych wierszy.
 
 ## Migracje
 

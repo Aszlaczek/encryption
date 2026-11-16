@@ -23,6 +23,10 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/blob-report/
 frontend/.last-run.json
+test-results/
+playwright-report/
+blob-report/
+.last-run.json
 npm-debug.log*
 
 # Logs
